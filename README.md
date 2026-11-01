@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" alt="AGS Media Chrono" width="480">
+</p>
+
 # ags-media-chrono
 
 Aplicativo desktop (Windows e Linux) para organizar fotos e vídeos: mostra todas as datas

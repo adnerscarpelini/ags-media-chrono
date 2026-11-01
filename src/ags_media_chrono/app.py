@@ -1,7 +1,9 @@
 """Ponto de entrada da aplicação."""
 
 import sys
+from pathlib import Path
 
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
 
 from ags_media_chrono import APP_NAME, __version__
@@ -9,12 +11,24 @@ from ags_media_chrono.core.ferramentas import ferramentas_ausentes
 from ags_media_chrono.ui.main_window import MainWindow
 from ags_media_chrono.ui.tema import aplicar_tema
 
+RECURSOS = Path(__file__).resolve().parent / "recursos"
+
+
+def _identificar_app_no_windows() -> None:
+    """Faz a barra de tarefas do Windows mostrar o ícone do app (e não o do Python)."""
+    if sys.platform == "win32":
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("AGS.MediaChrono")
+
 
 def create_app(argv: list[str] | None = None) -> QApplication:
+    _identificar_app_no_windows()
     app = QApplication.instance() or QApplication(argv if argv is not None else sys.argv)
     app.setApplicationName(APP_NAME)
     app.setApplicationVersion(__version__)
     app.setOrganizationName("AGS")
+    app.setWindowIcon(QIcon(str(RECURSOS / "icone.png")))
     aplicar_tema(app)
     return app
 
