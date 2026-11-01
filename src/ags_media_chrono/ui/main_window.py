@@ -34,7 +34,17 @@ from PySide6.QtWidgets import (
 
 from ags_media_chrono import APP_NAME, __version__
 from ags_media_chrono.core.escolhas import Status
+from ags_media_chrono.core.gravacao import OpcoesGravacao
+from ags_media_chrono.core.historico import Operacao, TipoOperacao, listar_operacoes
 from ags_media_chrono.core.midias import TipoMidia
+from ags_media_chrono.ui.aplicacao import (
+    DialogoAplicar,
+    DialogoHistorico,
+    DialogoRelatorio,
+    TrabalhoGravacao,
+    descrever_operacao,
+    dialogo_progresso,
+)
 from ags_media_chrono.ui.carregador import CarregadorPasta
 from ags_media_chrono.ui.dialogo_regra import DialogoRegra
 from ags_media_chrono.ui.filtro_galeria import Ordenacao, ProxyGaleria
@@ -281,6 +291,13 @@ class MainWindow(QMainWindow):
         self.painel_datas.opcoes_fuso = self.galeria.modelo.opcoes_fuso
         self.painel_datas.escolha_alterada.connect(self._ao_escolher)
         self.painel_datas.deslocamento_em_lote.connect(self._deslocar_selecionados)
+        self.painel_datas.aplicar_solicitado.connect(self.aplicar_datas)
+        self.trabalho = TrabalhoGravacao(self)
+        self.trabalho.progresso.connect(self._ao_progresso)
+        self.trabalho.terminado.connect(self._ao_terminar_trabalho)
+        self._progresso = None
+        self._tipo_trabalho: str | None = None
+        self.relatorio: DialogoRelatorio | None = None
 
         self.divisor = QSplitter(Qt.Orientation.Horizontal)
         self.divisor.setHandleWidth(1)
@@ -341,6 +358,14 @@ class MainWindow(QMainWindow):
         self.acao_aplicar = QAction("Aplicar datas", self)
         self.acao_aplicar.setShortcut("Ctrl+Return")
         self.acao_aplicar.setEnabled(False)
+        self.acao_aplicar.triggered.connect(lambda: self.aplicar_datas())
+
+        self.acao_desfazer = QAction("Desfazer última aplicação", self)
+        self.acao_desfazer.setShortcut(QKeySequence.StandardKey.Undo)
+        self.acao_desfazer.triggered.connect(lambda: self.desfazer_ultima())
+        self.acao_historico = QAction("Histórico de alterações…", self)
+        self.acao_historico.setShortcut("Ctrl+H")
+        self.acao_historico.triggered.connect(self.abrir_historico)
 
         self.acao_regra = QAction("Escolher data por regra…", self)
         self.acao_regra.setShortcut("Ctrl+R")
@@ -397,6 +422,9 @@ class MainWindow(QMainWindow):
         arquivo.addAction(self.acao_sair)
 
         editar = menu.addMenu("&Editar")
+        editar.addAction(self.acao_desfazer)
+        editar.addAction(self.acao_historico)
+        editar.addSeparator()
         editar.addAction(self.acao_selecionar_tudo)
         editar.addAction(self.acao_limpar_selecao)
         editar.addSeparator()
@@ -625,7 +653,102 @@ class MainWindow(QMainWindow):
             caminhos = [m.caminho for m in modelo.midias()]
         return [c for c in caminhos if modelo.estado(c).status.pronto_para_aplicar]
 
+    # --- gravação, desfazer e histórico ---------------------------------------------------
+
+    def aplicar_datas(self, opcoes: OpcoesGravacao | None = None) -> bool:
+        """Grava as datas dos arquivos prontos. Sem `opcoes`, pergunta ao usuário."""
+        if self._tipo_trabalho is not None:
+            return False
+        modelo = self.galeria.modelo
+        prontos = self.arquivos_prontos()
+        if not prontos:
+            return False
+        if opcoes is None:
+            dialogo = DialogoAplicar(len(prontos), modelo.opcoes_fuso.quicktime_utc, self)
+            if not dialogo.exec():
+                return False
+            opcoes = dialogo.opcoes()
+        itens = [(modelo.midia_por_caminho(c), modelo.estado(c).escolha.final) for c in prontos]
+        self._iniciar_trabalho("gravar", "Gravando datas…", len(itens))
+        self.trabalho.gravar(itens, opcoes)
+        return True
+
+    def desfazer_ultima(self, confirmar: bool = True) -> bool:
+        pendente = next((op for op in listar_operacoes() if not op.desfeita), None)
+        if pendente is None:
+            QMessageBox.information(self, "Desfazer", "Não há alterações para desfazer.")
+            return False
+        return self.desfazer(pendente, confirmar)
+
+    def abrir_historico(self) -> None:
+        dialogo = DialogoHistorico(self)
+        if dialogo.exec() and dialogo.operacao_escolhida is not None:
+            self.desfazer(dialogo.operacao_escolhida)
+
+    def desfazer(self, operacao: Operacao, confirmar: bool = True) -> bool:
+        if self._tipo_trabalho is not None or operacao.desfeita:
+            return False
+        if confirmar:
+            resposta = QMessageBox.question(
+                self, "Desfazer", f"Desfazer esta operação?\n\n{descrever_operacao(operacao)}"
+            )
+            if resposta != QMessageBox.StandardButton.Yes:
+                return False
+        if operacao.tipo == TipoOperacao.DATAS:
+            self._iniciar_trabalho("desfazer", "Desfazendo…", operacao.quantidade_ok)
+            self.trabalho.desfazer(operacao)
+            return True
+        return self._desfazer_renomeacao(operacao)
+
+    def _desfazer_renomeacao(self, operacao: Operacao) -> bool:
+        return False  # issue #28
+
+    def _iniciar_trabalho(self, tipo: str, titulo: str, total: int) -> None:
+        self._tipo_trabalho = tipo
+        self._progresso = dialogo_progresso(titulo, total, self)
+        self._progresso.canceled.connect(self.trabalho.cancelar)
+        self.acao_aplicar.setEnabled(False)
+        self.painel_datas.botao_aplicar.setEnabled(False)
+
+    def _ao_progresso(self, atual: int, total: int, nome: str) -> None:
+        if self._progresso is not None:
+            self._progresso.setMaximum(total)
+            self._progresso.setValue(atual - 1)
+            self._progresso.setLabelText(f"{nome}  ({atual} de {total})")
+
+    def _ao_terminar_trabalho(self, resultado, cancelado: bool) -> None:
+        tipo, self._tipo_trabalho = self._tipo_trabalho, None
+        if self._progresso is not None:
+            self._progresso.close()
+            self._progresso = None
+        self._atualizar_botao_aplicar()
+        if isinstance(resultado, Exception):
+            QMessageBox.critical(self, "Erro", f"A operação falhou:\n{resultado}")
+            return
+        modelo = self.galeria.modelo
+        if tipo == "gravar":
+            entradas = resultado.entradas
+            for e in entradas:
+                status = Status.APLICADO if e["ok"] else Status.ERRO
+                modelo.definir_status(Path(e["arquivo"]), status, e.get("mensagem", ""))
+            titulo = "Datas aplicadas"
+        else:
+            entradas = [r.para_entrada() for r in resultado]
+            for e in entradas:
+                if e["ok"]:
+                    modelo.reiniciar_estado(Path(e["arquivo"]))
+            titulo = "Alterações desfeitas"
+        lidos = [Path(e["arquivo"]) for e in entradas if e["ok"]]
+        if lidos:
+            self.leitor.reler(lidos)
+        self._atualizar_status()
+        self._atualizar_painel()
+        self.relatorio = DialogoRelatorio(titulo, entradas, cancelado, self)
+        self.relatorio.open()
+
     def closeEvent(self, evento) -> None:
+        self.trabalho.cancelar()
+        self.trabalho.aguardar(10_000)
         self.carregador.cancelar()
         self.carregador.aguardar(2000)
         self.gerador.fechar()

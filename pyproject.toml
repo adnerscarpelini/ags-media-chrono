@@ -33,6 +33,7 @@ ags_media_chrono = ["recursos/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["tests"]  # helpers como tests/amostras.py
 
 [tool.ruff]
 line-length = 100

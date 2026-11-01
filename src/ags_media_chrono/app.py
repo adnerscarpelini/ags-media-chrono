@@ -3,6 +3,7 @@
 import sys
 from pathlib import Path
 
+from PySide6.QtCore import QLibraryInfo, QLocale, QTranslator
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
 
@@ -22,6 +23,19 @@ def _identificar_app_no_windows() -> None:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("AGS.MediaChrono")
 
 
+def _traduzir_qt(app: QApplication) -> None:
+    """Botões e diálogos padrão do Qt (OK, Cancelar, Fechar, Sim/Não...) em português."""
+    if getattr(app, "_tradutor", None) is not None:
+        return
+    tradutor = QTranslator(app)
+    pasta = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
+    if tradutor.load(
+        QLocale(QLocale.Language.Portuguese, QLocale.Country.Brazil), "qtbase", "_", pasta
+    ):
+        app.installTranslator(tradutor)
+        app._tradutor = tradutor  # mantém a referência viva
+
+
 def create_app(argv: list[str] | None = None) -> QApplication:
     _identificar_app_no_windows()
     app = QApplication.instance() or QApplication(argv if argv is not None else sys.argv)
@@ -29,6 +43,7 @@ def create_app(argv: list[str] | None = None) -> QApplication:
     app.setApplicationVersion(__version__)
     app.setOrganizationName("AGS")
     app.setWindowIcon(QIcon(str(RECURSOS / "icone.png")))
+    _traduzir_qt(app)
     aplicar_tema(app)
     return app
 

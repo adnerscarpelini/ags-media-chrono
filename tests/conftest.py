@@ -8,10 +8,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 @pytest.fixture(autouse=True)
 def _cache_isolado(tmp_path_factory, monkeypatch):
-    """Cache de miniaturas em pasta temporária, nunca no cache real do usuário."""
+    """Cache e histórico em pasta temporária, nunca nos do usuário."""
     pasta = tmp_path_factory.mktemp("cache")
     monkeypatch.setenv("LOCALAPPDATA", str(pasta))
     monkeypatch.setenv("XDG_CACHE_HOME", str(pasta))
+    monkeypatch.setenv("XDG_DATA_HOME", str(pasta))  # histórico de alterações (Linux)
 
 
 @pytest.fixture(autouse=True)

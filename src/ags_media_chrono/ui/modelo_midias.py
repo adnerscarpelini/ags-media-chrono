@@ -141,6 +141,16 @@ class ModeloMidias(QAbstractListModel):
             self._estados[caminho] = EstadoMidia()
         return self._estados[caminho]
 
+    def midia_por_caminho(self, caminho: Path) -> Midia | None:
+        linha = self._linhas.get(caminho)
+        return self._midias[linha] if linha is not None else None
+
+    def reiniciar_estado(self, caminho: Path) -> None:
+        """Esquece datas e escolha (ex.: depois de desfazer); serão lidas de novo."""
+        if caminho in self._linhas:
+            self._estados[caminho] = EstadoMidia()
+            self._estado_alterado(caminho)
+
     def definir_datas(self, datas: DatasArquivo) -> None:
         if datas.arquivo not in self._linhas:
             return
