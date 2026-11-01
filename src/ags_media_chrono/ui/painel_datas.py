@@ -33,21 +33,12 @@ from ags_media_chrono.core.datas import (
 from ags_media_chrono.core.escolhas import (
     Escolha,
     EstadoMidia,
-    Status,
     TipoEscolha,
     escolha_atual,
     escolha_de_candidata,
     escolha_especifica,
 )
-from ags_media_chrono.ui.tema import CORES
-
-COR_STATUS = {
-    Status.PENDENTE: CORES["texto_fraco"],
-    Status.SUGERIDA: CORES["alerta"],
-    Status.ESCOLHIDA: CORES["destaque"],
-    Status.APLICADO: CORES["sucesso"],
-    Status.ERRO: CORES["erro"],
-}
+from ags_media_chrono.ui.tema import CORES, CORES_STATUS
 
 
 def formatar_deslocamento(deslocamento: timedelta) -> str:
@@ -346,7 +337,7 @@ class PainelDatas(QFrame):
         return linha
 
     def _mostrar_status(self, estado: EstadoMidia) -> None:
-        cor = COR_STATUS[estado.status]
+        cor = CORES_STATUS[estado.status.value]
         self.rotulo_status.setText(estado.status.rotulo)
         self.rotulo_status.setStyleSheet(
             f"color: {cor}; border: 1px solid {cor}; border-radius: 3px; padding: 1px 6px;"

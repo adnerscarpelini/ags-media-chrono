@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 )
 
 from ags_media_chrono import APP_NAME, __version__
+from ags_media_chrono.core.escolhas import Status
 from ags_media_chrono.core.midias import TipoMidia
 from ags_media_chrono.ui.carregador import CarregadorPasta
 from ags_media_chrono.ui.dialogo_regra import DialogoRegra
@@ -55,6 +56,18 @@ def _titulo_painel(texto: str) -> QLabel:
     rotulo = QLabel(texto.upper())
     rotulo.setObjectName("tituloPainel")
     return rotulo
+
+
+def resumo_status(contagem: dict) -> str:
+    """{Status.PENDENTE: 2, Status.SUGERIDA: 1, ...} -> "2 pendentes, 1 sugerida"."""
+    nomes = {
+        Status.PENDENTE: ("pendente", "pendentes"),
+        Status.SUGERIDA: ("sugerida", "sugeridas"),
+        Status.ESCOLHIDA: ("escolhida", "escolhidas"),
+        Status.APLICADO: ("aplicado", "aplicados"),
+        Status.ERRO: ("com erro", "com erro"),
+    }
+    return ", ".join(_plural(contagem[s], *nomes[s]) for s in Status if contagem.get(s))
 
 
 def _plural(n: int, singular: str, plural: str) -> str:
@@ -184,6 +197,13 @@ class AreaGaleria(QFrame):
         self.busca.setMaximumWidth(260)
         self.busca.textChanged.connect(self._ao_mudar_texto)
         layout.addSpacing(6)
+        self.combo_status = QComboBox()
+        self.combo_status.addItem("Todos os status", None)
+        for status in Status:
+            self.combo_status.addItem(status.rotulo, status.value)
+        self.combo_status.setToolTip("Filtrar pelo status da data")
+        self.combo_status.currentIndexChanged.connect(self._ao_mudar_status)
+        layout.addWidget(self.combo_status)
         layout.addWidget(self.busca)
         layout.addStretch(1)
 
@@ -206,6 +226,11 @@ class AreaGaleria(QFrame):
 
     def _ao_mudar_tipo(self, botao: QToolButton) -> None:
         self.proxy.definir_tipo(botao.property("tipo"))
+        self.filtro_alterado.emit()
+
+    def _ao_mudar_status(self, _indice: int) -> None:
+        valor = self.combo_status.currentData()
+        self.proxy.definir_status(Status(valor) if valor else None)
         self.filtro_alterado.emit()
 
     def _ao_mudar_texto(self, texto: str) -> None:
@@ -436,6 +461,9 @@ class MainWindow(QMainWindow):
         if proxy.filtrando:
             partes.append(f"exibindo {proxy.rowCount():,}".replace(",", "."))
         selecionados = len(self.galeria.grade.selectionModel().selectedIndexes())
+        resumo = resumo_status(modelo.contagem_status())
+        if resumo:
+            partes.append(resumo)
         if selecionados:
             partes.append(_plural(selecionados, "selecionado", "selecionados"))
         partes.append(str(self.pasta_atual))
@@ -524,6 +552,7 @@ class MainWindow(QMainWindow):
         modelo = self.galeria.modelo
         for datas in lista:
             modelo.definir_datas(datas)
+        self._atualizar_status()
         foco = self._arquivo_em_foco()
         if foco is not None and any(d.arquivo == foco for d in lista):
             self._atualizar_painel()
@@ -537,6 +566,7 @@ class MainWindow(QMainWindow):
         modelo = self.galeria.modelo
         modelo.definir_escolha(arquivo, escolha)
         self.painel_datas.ao_estado_alterado(modelo.estado(arquivo))
+        self._atualizar_status()
         self._atualizar_botao_aplicar()
 
     def _deslocar_selecionados(self, deslocamento) -> None:

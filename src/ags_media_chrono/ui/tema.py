@@ -25,6 +25,15 @@ CORES = {
     "erro": "#e05a5a",
 }
 
+# Cor de cada status de data (chave = valor de core.escolhas.Status).
+CORES_STATUS = {
+    "pendente": CORES["texto_fraco"],
+    "sugerida": CORES["alerta"],
+    "escolhida": CORES["destaque"],
+    "aplicado": CORES["sucesso"],
+    "erro": CORES["erro"],
+}
+
 QSS = """
 * {{
     font-size: 13px;

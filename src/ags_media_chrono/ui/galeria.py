@@ -23,9 +23,15 @@ from PySide6.QtWidgets import (
     QStyleOptionViewItem,
 )
 
+from ags_media_chrono.core.escolhas import Status
 from ags_media_chrono.core.midias import Midia, TipoMidia
-from ags_media_chrono.ui.modelo_midias import PapelDuracao, PapelMidia, PapelMiniatura
-from ags_media_chrono.ui.tema import CORES
+from ags_media_chrono.ui.modelo_midias import (
+    PapelDuracao,
+    PapelEstado,
+    PapelMidia,
+    PapelMiniatura,
+)
+from ags_media_chrono.ui.tema import CORES, CORES_STATUS
 
 TAMANHO_PADRAO = 160
 TAMANHO_MIN = 64
@@ -93,6 +99,9 @@ class DelegadoMiniatura(QStyledItemDelegate):
 
         if midia.tipo == TipoMidia.VIDEO:
             self._desenhar_selo_video(painter, alvo, index.data(PapelDuracao))
+        estado = index.data(PapelEstado)
+        if estado is not None and estado.lido:
+            self._desenhar_selo_status(painter, alvo, estado.status)
 
         texto = QRect(area.x(), area.bottom() + 2, area.width(), ALTURA_TEXTO)
         painter.setPen(QColor("white") if selecionado else self._cor["texto"])
@@ -118,6 +127,35 @@ class DelegadoMiniatura(QStyledItemDelegate):
         painter.setPen(self._cor["texto_desativado"])
         painter.setFont(self._fonte_rotulo)
         painter.drawText(alvo, Qt.AlignmentFlag.AlignCenter, extensao)
+
+    def _desenhar_selo_status(self, painter: QPainter, alvo: QRect, status: Status) -> None:
+        """Selo no canto superior direito: pílula com o nome em miniaturas grandes, bolinha
+        nas pequenas. Pendente fica só com contorno (pede atenção sem poluir)."""
+        cor = QColor(CORES_STATUS[status.value])
+        preenchido = status != Status.PENDENTE
+        if self.tamanho >= 120:
+            fm = QFontMetrics(self._fonte_selo)
+            texto = status.rotulo
+            largura = fm.horizontalAdvance(texto) + 12
+            selo = QRectF(alvo.right() - largura - 4, alvo.top() + 4, largura, 16)
+            fundo = QPainterPath()
+            fundo.addRoundedRect(selo, 8, 8)
+            painter.fillPath(fundo, cor if preenchido else QColor(0, 0, 0, 170))
+            painter.setPen(QPen(cor, 1))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRoundedRect(selo, 8, 8)
+            painter.setPen(QColor("#111111") if preenchido else cor)
+            painter.setFont(self._fonte_selo)
+            painter.drawText(selo, Qt.AlignmentFlag.AlignCenter, texto)
+        else:
+            centro = QPointF(alvo.right() - 9, alvo.top() + 9)
+            painter.setPen(QPen(QColor(0, 0, 0, 160), 2))
+            painter.setBrush(cor if preenchido else QColor(0, 0, 0, 170))
+            painter.drawEllipse(centro, 5, 5)
+            if not preenchido:
+                painter.setPen(QPen(cor, 1.5))
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawEllipse(centro, 4, 4)
 
     def _desenhar_selo_video(self, painter: QPainter, alvo: QRect, duracao: float | None) -> None:
         texto = formatar_duracao(duracao) if duracao else ""
