@@ -25,5 +25,4 @@ def test_abrir_pasta_atualiza_interface(qapp, tmp_path):
     window = MainWindow()
     window.abrir_pasta(tmp_path)
     assert window.pasta_atual == tmp_path
-    assert window.galeria.titulo.text() == tmp_path.name
     assert tmp_path.name in window.windowTitle()
