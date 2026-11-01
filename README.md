@@ -28,7 +28,13 @@ python -m venv .venv
 source .venv/bin/activate
 
 pip install -e ".[dev]"
+python tools/baixar_ferramentas.py   # ExifTool e FFmpeg em tools/bin/
 ```
+
+O app procura ExifTool/FFmpeg nesta ordem: variáveis `AGS_EXIFTOOL` / `AGS_FFMPEG` /
+`AGS_FFPROBE`, `tools/bin/` e o PATH do sistema. No Linux, em vez do script, também dá para
+usar os pacotes do sistema (`sudo apt install libimage-exiftool-perl ffmpeg`). A versão Linux
+do ExifTool é um script Perl, então o `perl` precisa estar instalado.
 
 Comandos:
 
