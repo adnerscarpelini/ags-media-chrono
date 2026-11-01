@@ -12,15 +12,21 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
+    QButtonGroup,
+    QComboBox,
     QFileDialog,
     QFileSystemModel,
     QFrame,
+    QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QSlider,
     QSplitter,
     QStackedWidget,
+    QToolButton,
     QTreeView,
     QVBoxLayout,
     QWidget,
@@ -29,7 +35,14 @@ from PySide6.QtWidgets import (
 from ags_media_chrono import APP_NAME, __version__
 from ags_media_chrono.core.midias import TipoMidia
 from ags_media_chrono.ui.carregador import CarregadorPasta
-from ags_media_chrono.ui.galeria import VisaoGaleria
+from ags_media_chrono.ui.filtro_galeria import Ordenacao, ProxyGaleria
+from ags_media_chrono.ui.galeria import (
+    PASSO_ZOOM,
+    TAMANHO_MAX,
+    TAMANHO_MIN,
+    TAMANHO_PADRAO,
+    VisaoGaleria,
+)
 from ags_media_chrono.ui.gerador_miniaturas import GeradorMiniaturas
 from ags_media_chrono.ui.modelo_midias import ModeloMidias
 
@@ -91,9 +104,10 @@ class PainelPastas(QFrame):
 
 
 class AreaGaleria(QFrame):
-    """Grade de mídias da pasta, com estado vazio quando não há o que mostrar."""
+    """Barra de filtros/ordenação + grade de mídias, com estado vazio quando não há pasta."""
 
     abrir_pasta = Signal()
+    filtro_alterado = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -122,11 +136,87 @@ class AreaGaleria(QFrame):
         vazio_layout.addWidget(self.botao, alignment=Qt.AlignmentFlag.AlignCenter)
         self.pilha.addWidget(vazio)
 
-        # Página 1: grade de miniaturas
+        # Página 1: barra + grade de miniaturas
         self.modelo = ModeloMidias(self)
+        self.proxy = ProxyGaleria(self)
+        self.proxy.setSourceModel(self.modelo)
         self.grade = VisaoGaleria()
-        self.grade.setModel(self.modelo)
-        self.pilha.addWidget(self.grade)
+        self.grade.setModel(self.proxy)
+
+        pagina = QWidget()
+        pagina_layout = QVBoxLayout(pagina)
+        pagina_layout.setContentsMargins(0, 0, 0, 0)
+        pagina_layout.setSpacing(0)
+        pagina_layout.addWidget(self._criar_barra())
+        pagina_layout.addWidget(self.grade)
+        self.pilha.addWidget(pagina)
+
+    def _criar_barra(self) -> QFrame:
+        barra = QFrame()
+        barra.setObjectName("barraGaleria")
+        layout = QHBoxLayout(barra)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(6)
+
+        self.grupo_tipo = QButtonGroup(self)
+        for rotulo, tipo in (
+            ("Todos", None),
+            ("Fotos", TipoMidia.FOTO),
+            ("Vídeos", TipoMidia.VIDEO),
+        ):
+            botao = QToolButton()
+            botao.setText(rotulo)
+            botao.setCheckable(True)
+            botao.setObjectName("segmento")
+            botao.setProperty("tipo", tipo)
+            botao.setChecked(tipo is None)
+            self.grupo_tipo.addButton(botao)
+            layout.addWidget(botao)
+        self.grupo_tipo.buttonClicked.connect(self._ao_mudar_tipo)
+
+        self.busca = QLineEdit()
+        self.busca.setPlaceholderText("Filtrar por nome…")
+        self.busca.setClearButtonEnabled(True)
+        self.busca.setMaximumWidth(260)
+        self.busca.textChanged.connect(self._ao_mudar_texto)
+        layout.addSpacing(6)
+        layout.addWidget(self.busca)
+        layout.addStretch(1)
+
+        rotulo = QLabel("Ordenar por")
+        rotulo.setObjectName("vazio")
+        layout.addWidget(rotulo)
+        self.combo_ordem = QComboBox()
+        for ordenacao in Ordenacao:
+            self.combo_ordem.addItem(ordenacao.rotulo, ordenacao)
+        self.combo_ordem.currentIndexChanged.connect(self._ao_mudar_ordem)
+        layout.addWidget(self.combo_ordem)
+
+        self.botao_direcao = QToolButton()
+        self.botao_direcao.setCheckable(True)  # marcado = decrescente
+        self.botao_direcao.setText("↑")
+        self.botao_direcao.setToolTip("Crescente / decrescente")
+        self.botao_direcao.toggled.connect(self._ao_mudar_ordem)
+        layout.addWidget(self.botao_direcao)
+        return barra
+
+    def _ao_mudar_tipo(self, botao: QToolButton) -> None:
+        self.proxy.definir_tipo(botao.property("tipo"))
+        self.filtro_alterado.emit()
+
+    def _ao_mudar_texto(self, texto: str) -> None:
+        self.proxy.definir_texto(texto)
+        self.filtro_alterado.emit()
+
+    def _ao_mudar_ordem(self, *_args) -> None:
+        decrescente = self.botao_direcao.isChecked()
+        self.botao_direcao.setText("↓" if decrescente else "↑")
+        self.proxy.ordenar(self.combo_ordem.currentData(), crescente=not decrescente)
+
+    def selecionar_tipo(self, tipo: TipoMidia | None) -> None:
+        for botao in self.grupo_tipo.buttons():
+            if botao.property("tipo") == tipo:
+                botao.click()
 
     def mostrar_vazio(self, titulo: str, subtitulo: str, botao: bool) -> None:
         self.titulo.setText(titulo)
@@ -171,6 +261,7 @@ class MainWindow(QMainWindow):
         self.resize(1400, 860)
         self.setMinimumSize(900, 560)
         self.pasta_atual: Path | None = None
+        self._carregando = False
 
         self.painel_pastas = PainelPastas()
         self.galeria = AreaGaleria()
@@ -199,10 +290,13 @@ class MainWindow(QMainWindow):
         self._criar_acoes()
         self._criar_menus()
         self._criar_barra_ferramentas()
-        self.statusBar().showMessage("Pronto")
+        self._criar_barra_status()
 
         self.painel_pastas.pasta_selecionada.connect(self.abrir_pasta)
         self.galeria.abrir_pasta.connect(self.escolher_pasta)
+        self.galeria.filtro_alterado.connect(self._atualizar_status)
+        self.galeria.grade.selectionModel().selectionChanged.connect(self._atualizar_status)
+        self.galeria.grade.tamanho_alterado.connect(self._sincronizar_zoom)
 
     def _criar_acoes(self) -> None:
         self.acao_abrir = QAction("Abrir pasta…", self)
@@ -222,6 +316,37 @@ class MainWindow(QMainWindow):
         self.acao_renomear.setShortcut("F2")
         self.acao_renomear.setEnabled(False)
 
+        self.acao_selecionar_tudo = QAction("Selecionar tudo", self)
+        self.acao_selecionar_tudo.setShortcut(QKeySequence.StandardKey.SelectAll)
+        self.acao_selecionar_tudo.triggered.connect(self.galeria.grade.selectAll)
+
+        self.acao_limpar_selecao = QAction("Limpar seleção", self)
+        self.acao_limpar_selecao.setShortcut("Ctrl+Shift+A")
+        self.acao_limpar_selecao.triggered.connect(self.galeria.grade.clearSelection)
+
+        self.acao_zoom_mais = QAction("Aumentar miniaturas", self)
+        self.acao_zoom_mais.setShortcuts([QKeySequence("Ctrl+="), QKeySequence("Ctrl++")])
+        self.acao_zoom_mais.triggered.connect(lambda: self._zoom_relativo(+1))
+        self.acao_zoom_menos = QAction("Diminuir miniaturas", self)
+        self.acao_zoom_menos.setShortcut("Ctrl+-")
+        self.acao_zoom_menos.triggered.connect(lambda: self._zoom_relativo(-1))
+        self.acao_zoom_padrao = QAction("Tamanho padrão", self)
+        self.acao_zoom_padrao.setShortcut("Ctrl+0")
+        self.acao_zoom_padrao.triggered.connect(
+            lambda: self.galeria.grade.definir_tamanho(TAMANHO_PADRAO)
+        )
+
+        self.acoes_tipo = []
+        for rotulo, tipo, atalho in (
+            ("Mostrar todos", None, "Ctrl+1"),
+            ("Só fotos", TipoMidia.FOTO, "Ctrl+2"),
+            ("Só vídeos", TipoMidia.VIDEO, "Ctrl+3"),
+        ):
+            acao = QAction(rotulo, self)
+            acao.setShortcut(atalho)
+            acao.triggered.connect(lambda _=False, t=tipo: self.galeria.selecionar_tipo(t))
+            self.acoes_tipo.append(acao)
+
         self.acao_sair = QAction("Sair", self)
         self.acao_sair.setShortcut(QKeySequence.StandardKey.Quit)
         self.acao_sair.triggered.connect(self.close)
@@ -237,11 +362,20 @@ class MainWindow(QMainWindow):
         arquivo.addAction(self.acao_sair)
 
         editar = menu.addMenu("&Editar")
+        editar.addAction(self.acao_selecionar_tudo)
+        editar.addAction(self.acao_limpar_selecao)
+        editar.addSeparator()
         editar.addAction(self.acao_aplicar)
         editar.addAction(self.acao_renomear)
 
         exibir = menu.addMenu("E&xibir")
         exibir.addAction(self.acao_subpastas)
+        exibir.addSeparator()
+        exibir.addActions(self.acoes_tipo)
+        exibir.addSeparator()
+        exibir.addAction(self.acao_zoom_mais)
+        exibir.addAction(self.acao_zoom_menos)
+        exibir.addAction(self.acao_zoom_padrao)
 
         ajuda = menu.addMenu("Aj&uda")
         ajuda.addAction(self.acao_sobre)
@@ -255,6 +389,45 @@ class MainWindow(QMainWindow):
         barra.addSeparator()
         barra.addAction(self.acao_aplicar)
         barra.addAction(self.acao_renomear)
+
+    def _criar_barra_status(self) -> None:
+        self.slider_zoom = QSlider(Qt.Orientation.Horizontal)
+        self.slider_zoom.setRange(TAMANHO_MIN, TAMANHO_MAX)
+        self.slider_zoom.setValue(self.galeria.grade.tamanho)
+        self.slider_zoom.setFixedWidth(150)
+        self.slider_zoom.setToolTip("Tamanho das miniaturas (Ctrl + roda do mouse)")
+        self.slider_zoom.valueChanged.connect(self.galeria.grade.definir_tamanho)
+        self.statusBar().addPermanentWidget(self.slider_zoom)
+        self.statusBar().showMessage("Pronto")
+
+    def _sincronizar_zoom(self, tamanho: int) -> None:
+        self.slider_zoom.blockSignals(True)
+        self.slider_zoom.setValue(tamanho)
+        self.slider_zoom.blockSignals(False)
+
+    def _zoom_relativo(self, passos: int) -> None:
+        grade = self.galeria.grade
+        grade.definir_tamanho(grade.tamanho + passos * PASSO_ZOOM * 2)
+
+    def _atualizar_status(self, *_args) -> None:
+        if self.pasta_atual is None or self._carregando:
+            return
+        modelo, proxy = self.galeria.modelo, self.galeria.proxy
+        if modelo.rowCount() == 0:
+            self.statusBar().showMessage(f"{self.pasta_atual} — vazio")
+            return
+        c = modelo.contagem()
+        partes = [
+            f"{_plural(c[TipoMidia.FOTO], 'foto', 'fotos')} · "
+            f"{_plural(c[TipoMidia.VIDEO], 'vídeo', 'vídeos')}"
+        ]
+        if proxy.filtrando:
+            partes.append(f"exibindo {proxy.rowCount():,}".replace(",", "."))
+        selecionados = len(self.galeria.grade.selectionModel().selectedIndexes())
+        if selecionados:
+            partes.append(_plural(selecionados, "selecionado", "selecionados"))
+        partes.append(str(self.pasta_atual))
+        self.statusBar().showMessage(" — ".join(partes))
 
     # --- abrir pasta -------------------------------------------------------------------------
 
@@ -273,6 +446,7 @@ class MainWindow(QMainWindow):
     def _recarregar(self) -> None:
         if self.pasta_atual is None:
             return
+        self._carregando = True
         self.gerador.nova_geracao()
         self.galeria.modelo.limpar()
         self.galeria.mostrar_vazio("Carregando…", str(self.pasta_atual), botao=False)
@@ -290,6 +464,7 @@ class MainWindow(QMainWindow):
     def _ao_concluir(self, geracao: int, total: int) -> None:
         if geracao != self.carregador.geracao:
             return
+        self._carregando = False
         if total == 0:
             self.galeria.mostrar_vazio(
                 "Nenhuma foto ou vídeo nesta pasta",
@@ -301,11 +476,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"{self.pasta_atual} — vazio")
             return
         self.gerador.pre_carregar(self.galeria.modelo.midias())
-        c = self.galeria.modelo.contagem()
-        self.statusBar().showMessage(
-            f"{_plural(c[TipoMidia.FOTO], 'foto', 'fotos')} · "
-            f"{_plural(c[TipoMidia.VIDEO], 'vídeo', 'vídeos')} — {self.pasta_atual}"
-        )
+        self._atualizar_status()
 
     def _ao_receber_miniatura(self, geracao: int, caminho: Path, imagem, duracao) -> None:
         if geracao != self.gerador.geracao:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections import OrderedDict
 from pathlib import Path
 
@@ -13,16 +14,28 @@ from ags_media_chrono.core.midias import Midia, TipoMidia
 PapelMidia = Qt.ItemDataRole.UserRole + 1
 PapelMiniatura = Qt.ItemDataRole.UserRole + 2  # QImage | None
 PapelDuracao = Qt.ItemDataRole.UserRole + 3  # segundos (float) | None
+# Papéis de ordenação: valores simples, comparados pelo próprio Qt (rápido).
+PapelOrdemNome = Qt.ItemDataRole.UserRole + 10
+PapelOrdemData = Qt.ItemDataRole.UserRole + 11
+PapelOrdemTipo = Qt.ItemDataRole.UserRole + 12
+PapelOrdemTamanho = Qt.ItemDataRole.UserRole + 13
 
 MAX_MINIATURAS_MEMORIA = 600  # ~320x240x3 bytes cada => ~140 MB no máximo
 
 _Indice = QModelIndex | QPersistentModelIndex
+_NUMEROS = re.compile(r"\d+")
+
+
+def chave_natural(nome: str) -> str:
+    """Chave de ordenação "natural": IMG_2 antes de IMG_10, sem diferenciar maiúsculas."""
+    return _NUMEROS.sub(lambda m: m.group().zfill(12), nome.casefold())
 
 
 class ModeloMidias(QAbstractListModel):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._midias: list[Midia] = []
+        self._chaves: list[str] = []  # chave_natural do nome, calculada uma vez
         self._linhas: dict[Path, int] = {}
         # LRU: só as miniaturas usadas mais recentemente ficam na memória; as demais são
         # pedidas de novo (vêm rápido do cache em disco) quando voltam a aparecer na tela.
@@ -50,6 +63,14 @@ class ModeloMidias(QAbstractListModel):
             return imagem
         if role == PapelDuracao:
             return self._duracoes.get(midia.caminho)
+        if role == PapelOrdemNome:
+            return self._chaves[index.row()]
+        if role == PapelOrdemData:
+            return midia.modificado
+        if role == PapelOrdemTipo:
+            return f"{midia.tipo.value}|{midia.caminho.suffix.lower()}|{self._chaves[index.row()]}"
+        if role == PapelOrdemTamanho:
+            return midia.tamanho
         return None
 
     def midia(self, linha: int) -> Midia:
@@ -61,6 +82,7 @@ class ModeloMidias(QAbstractListModel):
     def limpar(self) -> None:
         self.beginResetModel()
         self._midias = []
+        self._chaves = []
         self._linhas = {}
         self._miniaturas = OrderedDict()
         self._duracoes = {}
@@ -74,6 +96,7 @@ class ModeloMidias(QAbstractListModel):
         for i, m in enumerate(midias, start=inicio):
             self._linhas[m.caminho] = i
         self._midias.extend(midias)
+        self._chaves.extend(chave_natural(m.nome) for m in midias)
         self.endInsertRows()
 
     def definir_miniatura(self, caminho: Path, imagem: QImage) -> None:

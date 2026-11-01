@@ -4,8 +4,17 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import QModelIndex, QPointF, QRect, QRectF, QSize, Qt
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPolygonF
+from PySide6.QtCore import QModelIndex, QPoint, QPointF, QRect, QRectF, QSize, Qt, Signal
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QFontMetrics,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPolygonF,
+    QWheelEvent,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QListView,
@@ -21,6 +30,7 @@ from ags_media_chrono.ui.tema import CORES
 TAMANHO_PADRAO = 160
 TAMANHO_MIN = 64
 TAMANHO_MAX = 400
+PASSO_ZOOM = 16  # pixels por "clique" da roda do mouse
 MARGEM = 6  # espaço interno da célula
 ALTURA_TEXTO = 20
 
@@ -77,10 +87,7 @@ class DelegadoMiniatura(QStyledItemDelegate):
                 self.solicitar_miniatura(midia)
 
         if selecionado:
-            caneta = painter.pen()
-            caneta.setColor(self._cor["destaque"])
-            caneta.setWidth(2)
-            painter.setPen(caneta)
+            painter.setPen(QPen(self._cor["destaque"], 2))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRect(QRectF(alvo).adjusted(-1, -1, 1, 1))
 
@@ -138,6 +145,8 @@ class DelegadoMiniatura(QStyledItemDelegate):
 
 
 class VisaoGaleria(QListView):
+    tamanho_alterado = Signal(int)
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.delegado = DelegadoMiniatura(self)
@@ -147,8 +156,9 @@ class VisaoGaleria(QListView):
         self.setResizeMode(QListView.ResizeMode.Adjust)
         self.setWrapping(True)
         self.setUniformItemSizes(True)
-        self.setLayoutMode(QListView.LayoutMode.Batched)
-        self.setBatchSize(500)
+        # Com itens uniformes o layout é barato; em uma passada só dá para reposicionar
+        # a rolagem logo após o zoom.
+        self.setLayoutMode(QListView.LayoutMode.SinglePass)
         self.setSpacing(4)
         self.setMouseTracking(True)
         self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -157,7 +167,35 @@ class VisaoGaleria(QListView):
         self.verticalScrollBar().setSingleStep(24)
         self.setObjectName("grade")
 
+    @property
+    def tamanho(self) -> int:
+        return self.delegado.tamanho
+
     def definir_tamanho(self, pixels: int) -> None:
-        self.delegado.tamanho = max(TAMANHO_MIN, min(TAMANHO_MAX, pixels))
-        # Força o QListView a recalcular o layout com o novo sizeHint.
-        self.scheduleDelayedItemsLayout()
+        pixels = max(TAMANHO_MIN, min(TAMANHO_MAX, pixels))
+        if pixels == self.delegado.tamanho:
+            return
+        ancora = self._item_ancora()
+        self.delegado.tamanho = pixels
+        # Recalcula o layout agora (e não no próximo ciclo) para reposicionar a rolagem.
+        self.doItemsLayout()
+        if ancora.isValid():
+            self.scrollTo(ancora, QAbstractItemView.ScrollHint.PositionAtCenter)
+        self.tamanho_alterado.emit(pixels)
+
+    def _item_ancora(self) -> QModelIndex:
+        """Item que deve continuar visível após o zoom: o atual, se estiver na tela, senão o
+        primeiro visível."""
+        atual = self.currentIndex()
+        if atual.isValid() and self.viewport().rect().intersects(self.visualRect(atual)):
+            return atual
+        return self.indexAt(QPoint(self.spacing() + MARGEM, self.spacing() + MARGEM))
+
+    def wheelEvent(self, evento: QWheelEvent) -> None:
+        if evento.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            passos = evento.angleDelta().y() / 120
+            if passos:
+                self.definir_tamanho(round(self.tamanho + passos * PASSO_ZOOM))
+            evento.accept()
+            return
+        super().wheelEvent(evento)

@@ -195,6 +195,25 @@ QTreeView, QListView, QTableView {{
     selection-background-color: {destaque};
     selection-color: white;
 }}
+QFrame#barraGaleria {{
+    background: {painel};
+    border-bottom: 1px solid {borda};
+}}
+QToolButton#segmento {{
+    border: 1px solid {borda_forte};
+    border-radius: 4px;
+    padding: 3px 12px;
+}}
+QToolButton#segmento:checked {{
+    background: {destaque};
+    border-color: {destaque};
+    color: white;
+}}
+QComboBox QAbstractItemView {{
+    background: {painel};
+    border: 1px solid {borda_forte};
+    selection-background-color: {destaque};
+}}
 QListView#grade {{
     background: {fundo};
     padding: 6px;
