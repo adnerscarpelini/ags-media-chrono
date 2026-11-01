@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
 from ags_media_chrono import APP_NAME, __version__
 from ags_media_chrono.core.ferramentas import ferramentas_ausentes
 from ags_media_chrono.ui.main_window import MainWindow
+from ags_media_chrono.ui.tema import aplicar_tema
 
 
 def create_app(argv: list[str] | None = None) -> QApplication:
@@ -14,6 +15,7 @@ def create_app(argv: list[str] | None = None) -> QApplication:
     app.setApplicationName(APP_NAME)
     app.setApplicationVersion(__version__)
     app.setOrganizationName("AGS")
+    aplicar_tema(app)
     return app
 
 
