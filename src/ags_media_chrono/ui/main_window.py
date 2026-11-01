@@ -12,12 +12,10 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QFileDialog,
     QFileSystemModel,
     QFrame,
     QLabel,
-    QListView,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -31,6 +29,7 @@ from PySide6.QtWidgets import (
 from ags_media_chrono import APP_NAME, __version__
 from ags_media_chrono.core.midias import TipoMidia
 from ags_media_chrono.ui.carregador import CarregadorPasta
+from ags_media_chrono.ui.galeria import VisaoGaleria
 from ags_media_chrono.ui.modelo_midias import ModeloMidias
 
 
@@ -91,7 +90,7 @@ class PainelPastas(QFrame):
 
 
 class AreaGaleria(QFrame):
-    """Lista de mídias da pasta. A grade de miniaturas substitui a lista na issue #7."""
+    """Grade de mídias da pasta, com estado vazio quando não há o que mostrar."""
 
     abrir_pasta = Signal()
 
@@ -122,14 +121,11 @@ class AreaGaleria(QFrame):
         vazio_layout.addWidget(self.botao, alignment=Qt.AlignmentFlag.AlignCenter)
         self.pilha.addWidget(vazio)
 
-        # Página 1: lista de mídias
+        # Página 1: grade de miniaturas
         self.modelo = ModeloMidias(self)
-        self.lista = QListView()
-        self.lista.setModel(self.modelo)
-        self.lista.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        self.lista.setUniformItemSizes(True)
-        self.lista.setObjectName("galeria")
-        self.pilha.addWidget(self.lista)
+        self.grade = VisaoGaleria()
+        self.grade.setModel(self.modelo)
+        self.pilha.addWidget(self.grade)
 
     def mostrar_vazio(self, titulo: str, subtitulo: str, botao: bool) -> None:
         self.titulo.setText(titulo)
