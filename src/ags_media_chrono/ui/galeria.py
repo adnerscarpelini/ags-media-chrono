@@ -1,0 +1,157 @@
+"""Grade de miniaturas (QListView em modo ícone + delegate próprio)."""
+
+from __future__ import annotations
+
+from PySide6.QtCore import QModelIndex, QPointF, QRect, QRectF, QSize, Qt
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPolygonF
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QListView,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
+)
+
+from ags_media_chrono.core.midias import TipoMidia
+from ags_media_chrono.ui.modelo_midias import PapelDuracao, PapelMidia, PapelMiniatura
+from ags_media_chrono.ui.tema import CORES
+
+TAMANHO_PADRAO = 160
+TAMANHO_MIN = 64
+TAMANHO_MAX = 400
+MARGEM = 6  # espaço interno da célula
+ALTURA_TEXTO = 20
+
+
+def formatar_duracao(segundos: float) -> str:
+    total = int(round(segundos))
+    h, resto = divmod(total, 3600)
+    m, s = divmod(resto, 60)
+    return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+
+class DelegadoMiniatura(QStyledItemDelegate):
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.tamanho = TAMANHO_PADRAO
+        self._cor = {k: QColor(v) for k, v in CORES.items()}
+        self._fonte_rotulo = QFont()
+        self._fonte_rotulo.setPixelSize(11)
+        self._fonte_rotulo.setBold(True)
+        self._fonte_selo = QFont()
+        self._fonte_selo.setPixelSize(10)
+        self._fonte_selo.setBold(True)
+
+    def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> QSize:
+        return QSize(self.tamanho + 2 * MARGEM, self.tamanho + ALTURA_TEXTO + 2 * MARGEM)
+
+    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+
+        celula = option.rect.adjusted(1, 1, -1, -1)
+        selecionado = bool(option.state & QStyle.StateFlag.State_Selected)
+        hover = bool(option.state & QStyle.StateFlag.State_MouseOver)
+
+        if selecionado or hover:
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(self._cor["painel_alto"] if not selecionado else self._cor["borda"])
+            painter.drawRoundedRect(QRectF(celula), 6, 6)
+
+        area = QRect(option.rect.x() + MARGEM, option.rect.y() + MARGEM, self.tamanho, self.tamanho)
+        midia = index.data(PapelMidia)
+        imagem = index.data(PapelMiniatura)
+
+        if imagem is not None and not imagem.isNull():
+            alvo = self._encaixar(imagem.size(), area)
+            painter.drawImage(alvo, imagem)
+        else:
+            alvo = area.adjusted(8, 8, -8, -8)
+            self._desenhar_placeholder(painter, alvo, midia.caminho.suffix.lstrip(".").upper())
+
+        if selecionado:
+            caneta = painter.pen()
+            caneta.setColor(self._cor["destaque"])
+            caneta.setWidth(2)
+            painter.setPen(caneta)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRect(QRectF(alvo).adjusted(-1, -1, 1, 1))
+
+        if midia.tipo == TipoMidia.VIDEO:
+            self._desenhar_selo_video(painter, alvo, index.data(PapelDuracao))
+
+        texto = QRect(area.x(), area.bottom() + 2, area.width(), ALTURA_TEXTO)
+        painter.setPen(QColor("white") if selecionado else self._cor["texto"])
+        painter.setFont(option.font)
+        nome = QFontMetrics(option.font).elidedText(
+            midia.nome, Qt.TextElideMode.ElideMiddle, texto.width()
+        )
+        painter.drawText(texto, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter, nome)
+        painter.restore()
+
+    @staticmethod
+    def _encaixar(tamanho: QSize, area: QRect) -> QRect:
+        """Redimensiona mantendo a proporção e centraliza na área."""
+        escalado = tamanho.scaled(area.size(), Qt.AspectRatioMode.KeepAspectRatio)
+        x = area.x() + (area.width() - escalado.width()) // 2
+        y = area.y() + (area.height() - escalado.height()) // 2
+        return QRect(x, y, escalado.width(), escalado.height())
+
+    def _desenhar_placeholder(self, painter: QPainter, alvo: QRect, extensao: str) -> None:
+        painter.setPen(self._cor["borda_forte"])
+        painter.setBrush(self._cor["painel"])
+        painter.drawRoundedRect(QRectF(alvo), 4, 4)
+        painter.setPen(self._cor["texto_desativado"])
+        painter.setFont(self._fonte_rotulo)
+        painter.drawText(alvo, Qt.AlignmentFlag.AlignCenter, extensao)
+
+    def _desenhar_selo_video(self, painter: QPainter, alvo: QRect, duracao: float | None) -> None:
+        texto = formatar_duracao(duracao) if duracao else ""
+        fm = QFontMetrics(self._fonte_selo)
+        largura = 18 + (fm.horizontalAdvance(texto) + 6 if texto else 0)
+        selo = QRectF(alvo.left() + 5, alvo.bottom() - 21, largura, 16)
+
+        caminho = QPainterPath()
+        caminho.addRoundedRect(selo, 3, 3)
+        painter.fillPath(caminho, QColor(0, 0, 0, 170))
+
+        cx, cy = selo.left() + 9, selo.center().y()
+        triangulo = QPolygonF(
+            [QPointF(cx - 3, cy - 4), QPointF(cx - 3, cy + 4), QPointF(cx + 4, cy)]
+        )
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("white"))
+        painter.drawPolygon(triangulo)
+
+        if texto:
+            painter.setPen(QColor("white"))
+            painter.setFont(self._fonte_selo)
+            area_texto = selo.adjusted(16, 0, -4, 0)
+            painter.drawText(area_texto, Qt.AlignmentFlag.AlignVCenter, texto)
+
+
+class VisaoGaleria(QListView):
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.delegado = DelegadoMiniatura(self)
+        self.setItemDelegate(self.delegado)
+        self.setViewMode(QListView.ViewMode.IconMode)
+        self.setMovement(QListView.Movement.Static)
+        self.setResizeMode(QListView.ResizeMode.Adjust)
+        self.setWrapping(True)
+        self.setUniformItemSizes(True)
+        self.setLayoutMode(QListView.LayoutMode.Batched)
+        self.setBatchSize(500)
+        self.setSpacing(4)
+        self.setMouseTracking(True)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.setSelectionRectVisible(True)
+        self.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.verticalScrollBar().setSingleStep(24)
+        self.setObjectName("grade")
+
+    def definir_tamanho(self, pixels: int) -> None:
+        self.delegado.tamanho = max(TAMANHO_MIN, min(TAMANHO_MAX, pixels))
+        # Força o QListView a recalcular o layout com o novo sizeHint.
+        self.scheduleDelayedItemsLayout()

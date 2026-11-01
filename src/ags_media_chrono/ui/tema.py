@@ -195,6 +195,10 @@ QTreeView, QListView, QTableView {{
     selection-background-color: {destaque};
     selection-color: white;
 }}
+QListView#grade {{
+    background: {fundo};
+    padding: 6px;
+}}
 QTreeView::item {{
     padding: 3px 2px;
 }}
