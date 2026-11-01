@@ -28,6 +28,14 @@ permite escolher a data correta, gravá-la em todos os campos e renomear em lote
 Feito para corrigir mídias baixadas do iCloud, recebidas pelo WhatsApp ou vindas de câmeras
 (ex.: Nikon), onde a data correta fica em lugares diferentes.
 
+<p align="center">
+  <img src="assets/captura-principal.png" alt="Galeria com selos de status e o painel com todas as datas do vídeo, já no horário local" width="900">
+</p>
+
+<p align="center">
+  <img src="assets/captura-renomear.png" alt="Renomear em lote com máscara de data e prévia dos novos nomes" width="760">
+</p>
+
 ## Instalação
 
 Baixe o pacote da sua plataforma na página de
@@ -157,6 +165,13 @@ python tools/empacotar.py
 
 O script baixa ExifTool/FFmpeg se faltarem, roda o PyInstaller e testa o executável gerado
 (`ags-media-chrono --verificar relatorio.txt`).
+
+Pasta de demonstração e prints do README (imagens sintéticas, sem fotos pessoais):
+
+```bash
+python tools/criar_demo.py "C:\Temp\Viagem 2024"   # só a pasta, para testar o app
+python tools/capturar_telas.py                         # recria assets/captura-*.png
+```
 
 No Linux, o Qt pode precisar de bibliotecas do sistema (ex.: Ubuntu:
 `sudo apt install libxcb-cursor0 libegl1`).
