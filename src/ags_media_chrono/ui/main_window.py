@@ -37,6 +37,7 @@ from ags_media_chrono.core.escolhas import Status
 from ags_media_chrono.core.gravacao import OpcoesGravacao
 from ags_media_chrono.core.historico import Operacao, TipoOperacao, listar_operacoes
 from ags_media_chrono.core.midias import TipoMidia
+from ags_media_chrono.core.renomear import desfazer_renomeacao, entrada_para, renomear
 from ags_media_chrono.ui.aplicacao import (
     DialogoAplicar,
     DialogoHistorico,
@@ -47,6 +48,7 @@ from ags_media_chrono.ui.aplicacao import (
 )
 from ags_media_chrono.ui.carregador import CarregadorPasta
 from ags_media_chrono.ui.dialogo_regra import DialogoRegra
+from ags_media_chrono.ui.dialogo_renomear import DialogoRenomear
 from ags_media_chrono.ui.filtro_galeria import Ordenacao, ProxyGaleria
 from ags_media_chrono.ui.galeria import (
     PASSO_ZOOM,
@@ -375,6 +377,7 @@ class MainWindow(QMainWindow):
         self.acao_renomear = QAction("Renomear em lote…", self)
         self.acao_renomear.setShortcut("F2")
         self.acao_renomear.setEnabled(False)
+        self.acao_renomear.triggered.connect(lambda: self.renomear_em_lote())
 
         self.acao_selecionar_tudo = QAction("Selecionar tudo", self)
         self.acao_selecionar_tudo.setShortcut(QKeySequence.StandardKey.SelectAll)
@@ -481,6 +484,7 @@ class MainWindow(QMainWindow):
         if modelo.rowCount() == 0:
             self.statusBar().showMessage(f"{self.pasta_atual} — vazio")
             return
+        self.acao_renomear.setEnabled(modelo.rowCount() > 0)
         c = modelo.contagem()
         partes = [
             f"{_plural(c[TipoMidia.FOTO], 'foto', 'fotos')} · "
@@ -700,8 +704,45 @@ class MainWindow(QMainWindow):
             return True
         return self._desfazer_renomeacao(operacao)
 
+    def renomear_em_lote(self, dialogo: DialogoRenomear | None = None) -> bool:
+        """Abre o diálogo para os selecionados (ou todos os exibidos) e renomeia."""
+        modelo = self.galeria.modelo
+        alvos = self.arquivos_alvo()
+        if not alvos or self._tipo_trabalho is not None:
+            return False
+        if dialogo is None:
+            itens = [
+                entrada_para(modelo.midia_por_caminho(c), modelo.estado(c), modelo.opcoes_fuso)
+                for c in alvos
+            ]
+            dialogo = DialogoRenomear(itens, self)
+            if not dialogo.exec():
+                return False
+        resultado = renomear(dialogo.plano)
+        if resultado.erro is not None:
+            QMessageBox.warning(self, "Renomear", f"Nada foi renomeado:\n{resultado.erro}")
+            return False
+        for e in resultado.operacao.entradas:
+            modelo.renomear(Path(e["de"]), Path(e["para"]))
+        self.statusBar().showMessage(
+            f"{len(resultado.operacao.entradas)} arquivo(s) renomeado(s). "
+            "Para desfazer: Editar › Desfazer (Ctrl+Z).",
+            10_000,
+        )
+        self._atualizar_painel()
+        return True
+
     def _desfazer_renomeacao(self, operacao: Operacao) -> bool:
-        return False  # issue #28
+        erro = desfazer_renomeacao(operacao)
+        if erro is not None:
+            QMessageBox.warning(self, "Desfazer", f"Não foi possível desfazer:\n{erro}")
+            return False
+        for e in operacao.entradas:
+            if e.get("ok"):
+                self.galeria.modelo.renomear(Path(e["para"]), Path(e["de"]))
+        self.statusBar().showMessage("Renomeação desfeita.", 8000)
+        self._atualizar_painel()
+        return True
 
     def _iniciar_trabalho(self, tipo: str, titulo: str, total: int) -> None:
         self._tipo_trabalho = tipo

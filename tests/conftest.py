@@ -24,6 +24,18 @@ def _configuracoes_isoladas(tmp_path_factory):
     QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(pasta))
 
 
+@pytest.fixture(autouse=True)
+def _sem_caixas_de_mensagem(monkeypatch):
+    """Uma QMessageBox modal travaria o teste esperando um clique: falha com a mensagem."""
+    from PySide6.QtWidgets import QMessageBox
+
+    def falhar(_parent, titulo, texto, *args, **kwargs):
+        raise AssertionError(f"QMessageBox inesperada: {titulo}: {texto}")
+
+    for nome in ("warning", "critical", "information", "question"):
+        monkeypatch.setattr(QMessageBox, nome, falhar)
+
+
 @pytest.fixture(scope="session")
 def qapp():
     from ags_media_chrono.app import create_app

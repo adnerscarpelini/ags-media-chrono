@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections import OrderedDict
+from dataclasses import replace
 from pathlib import Path
 
 from PySide6.QtCore import QAbstractListModel, QModelIndex, QPersistentModelIndex, Qt
@@ -144,6 +145,23 @@ class ModeloMidias(QAbstractListModel):
     def midia_por_caminho(self, caminho: Path) -> Midia | None:
         linha = self._linhas.get(caminho)
         return self._midias[linha] if linha is not None else None
+
+    def renomear(self, de: Path, para: Path) -> None:
+        """Atualiza o item renomeado no disco, preservando datas, escolha e miniatura."""
+        linha = self._linhas.pop(de, None)
+        if linha is None:
+            return
+        self._midias[linha] = replace(self._midias[linha], caminho=para)
+        self._chaves[linha] = chave_natural(para.name)
+        self._linhas[para] = linha
+        for dicionario in (self._miniaturas, self._duracoes, self._estados):
+            if de in dicionario:
+                dicionario[para] = dicionario.pop(de)
+        estado = self._estados.get(para)
+        if estado is not None and estado.datas is not None:
+            estado.datas.arquivo = para
+        indice = self.index(linha)
+        self.dataChanged.emit(indice, indice)
 
     def reiniciar_estado(self, caminho: Path) -> None:
         """Esquece datas e escolha (ex.: depois de desfazer); serão lidas de novo."""
