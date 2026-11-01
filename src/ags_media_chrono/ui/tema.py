@@ -186,6 +186,33 @@ QCheckBox::indicator, QRadioButton::indicator {{
     width: 14px;
     height: 14px;
 }}
+QRadioButton::indicator {{
+    border: 1px solid {texto_desativado};
+    border-radius: 8px;
+    background: {fundo};
+}}
+QRadioButton::indicator:hover {{
+    border-color: {destaque};
+}}
+QRadioButton::indicator:checked {{
+    border: 4px solid {destaque};
+    background: white;
+    width: 8px;
+    height: 8px;
+}}
+QWidget#listaDatas {{
+    background: {painel};
+}}
+QFrame#linhaData {{
+    border-radius: 4px;
+}}
+QFrame#linhaData:hover {{
+    background: {painel_alto};
+}}
+QLabel#detalheData {{
+    color: {texto_fraco};
+    font-size: 11px;
+}}
 
 /* Listas e árvores */
 QTreeView, QListView, QTableView {{

@@ -9,16 +9,21 @@ from pathlib import Path
 from PySide6.QtCore import QAbstractListModel, QModelIndex, QPersistentModelIndex, Qt
 from PySide6.QtGui import QImage
 
+from ags_media_chrono.core.datas import DatasArquivo, OpcoesFuso
+from ags_media_chrono.core.escolhas import Escolha, EstadoMidia, Status
 from ags_media_chrono.core.midias import Midia, TipoMidia
 
 PapelMidia = Qt.ItemDataRole.UserRole + 1
 PapelMiniatura = Qt.ItemDataRole.UserRole + 2  # QImage | None
 PapelDuracao = Qt.ItemDataRole.UserRole + 3  # segundos (float) | None
+PapelEstado = Qt.ItemDataRole.UserRole + 4  # EstadoMidia (datas, escolha, status)
+PapelStatus = Qt.ItemDataRole.UserRole + 5  # Status
 # Papéis de ordenação: valores simples, comparados pelo próprio Qt (rápido).
 PapelOrdemNome = Qt.ItemDataRole.UserRole + 10
 PapelOrdemData = Qt.ItemDataRole.UserRole + 11
 PapelOrdemTipo = Qt.ItemDataRole.UserRole + 12
 PapelOrdemTamanho = Qt.ItemDataRole.UserRole + 13
+PapelOrdemEscolhida = Qt.ItemDataRole.UserRole + 14
 
 MAX_MINIATURAS_MEMORIA = 600  # ~320x240x3 bytes cada => ~140 MB no máximo
 
@@ -42,6 +47,8 @@ class ModeloMidias(QAbstractListModel):
         self._miniaturas: OrderedDict[Path, QImage] = OrderedDict()
         self.max_miniaturas = MAX_MINIATURAS_MEMORIA
         self._duracoes: dict[Path, float] = {}
+        self._estados: dict[Path, EstadoMidia] = {}
+        self.opcoes_fuso = OpcoesFuso()
 
     def rowCount(self, parent: _Indice = QModelIndex()) -> int:  # noqa: B008
         return 0 if parent.isValid() else len(self._midias)
@@ -71,6 +78,14 @@ class ModeloMidias(QAbstractListModel):
             return f"{midia.tipo.value}|{midia.caminho.suffix.lower()}|{self._chaves[index.row()]}"
         if role == PapelOrdemTamanho:
             return midia.tamanho
+        if role == PapelEstado:
+            return self.estado(midia.caminho)
+        if role == PapelStatus:
+            return self.estado(midia.caminho).status
+        if role == PapelOrdemEscolhida:
+            # Data escolhida; sem escolha, vai para o fim (por data de modificação).
+            escolha = self.estado(midia.caminho).escolha
+            return escolha.final.timestamp() if escolha else 1e12 + midia.modificado
         return None
 
     def midia(self, linha: int) -> Midia:
@@ -86,6 +101,7 @@ class ModeloMidias(QAbstractListModel):
         self._linhas = {}
         self._miniaturas = OrderedDict()
         self._duracoes = {}
+        self._estados = {}
         self.endResetModel()
 
     def adicionar(self, midias: list[Midia]) -> None:
@@ -117,6 +133,42 @@ class ModeloMidias(QAbstractListModel):
         indice = self.index(linha)
         self.dataChanged.emit(indice, indice, [papel])
         return True
+
+    # --- datas e escolhas ------------------------------------------------------------------
+
+    def estado(self, caminho: Path) -> EstadoMidia:
+        if caminho not in self._estados:
+            self._estados[caminho] = EstadoMidia()
+        return self._estados[caminho]
+
+    def definir_datas(self, datas: DatasArquivo) -> None:
+        if datas.arquivo not in self._linhas:
+            return
+        self.estado(datas.arquivo).receber_datas(datas, self.opcoes_fuso)
+        self._estado_alterado(datas.arquivo)
+
+    def definir_escolha(self, caminho: Path, escolha: Escolha | None) -> None:
+        if caminho not in self._linhas:
+            return
+        self.estado(caminho).escolher(escolha)
+        self._estado_alterado(caminho)
+
+    def definir_status(self, caminho: Path, status: Status, mensagem: str = "") -> None:
+        if caminho not in self._linhas:
+            return
+        estado = self.estado(caminho)
+        estado.status, estado.mensagem = status, mensagem
+        self._estado_alterado(caminho)
+
+    def _estado_alterado(self, caminho: Path) -> None:
+        indice = self.index(self._linhas[caminho])
+        self.dataChanged.emit(indice, indice, [PapelEstado, PapelStatus, PapelOrdemEscolhida])
+
+    def contagem_status(self) -> dict[Status, int]:
+        total = dict.fromkeys(Status, 0)
+        for m in self._midias:
+            total[self.estado(m.caminho).status] += 1
+        return total
 
     def contagem(self) -> dict[TipoMidia, int]:
         total = {TipoMidia.FOTO: 0, TipoMidia.VIDEO: 0}

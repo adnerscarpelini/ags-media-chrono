@@ -44,7 +44,9 @@ from ags_media_chrono.ui.galeria import (
     VisaoGaleria,
 )
 from ags_media_chrono.ui.gerador_miniaturas import GeradorMiniaturas
-from ags_media_chrono.ui.modelo_midias import ModeloMidias
+from ags_media_chrono.ui.leitor_datas import LeitorDatas
+from ags_media_chrono.ui.modelo_midias import ModeloMidias, PapelMidia
+from ags_media_chrono.ui.painel_datas import PainelDatas
 from ags_media_chrono.ui.visualizador import Visualizador
 
 
@@ -229,32 +231,6 @@ class AreaGaleria(QFrame):
         self.pilha.setCurrentIndex(1)
 
 
-class PainelDatas(QFrame):
-    """Placeholder do painel de datas; conteúdo real na issue #14."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.setObjectName("painel")
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        layout.addWidget(_titulo_painel("Datas do arquivo"))
-
-        vazio = QLabel("Selecione um arquivo para ver\ntodas as datas encontradas.")
-        vazio.setObjectName("vazio")
-        vazio.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(vazio, 1)
-
-        rodape = QWidget()
-        rodape_layout = QVBoxLayout(rodape)
-        rodape_layout.setContentsMargins(10, 10, 10, 10)
-        self.botao_aplicar = QPushButton("Aplicar datas")
-        self.botao_aplicar.setObjectName("primario")
-        self.botao_aplicar.setEnabled(False)
-        rodape_layout.addWidget(self.botao_aplicar)
-        layout.addWidget(rodape)
-
-
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -273,6 +249,11 @@ class MainWindow(QMainWindow):
         self.gerador = GeradorMiniaturas(self)
         self.gerador.pronta.connect(self._ao_receber_miniatura)
         self.galeria.grade.delegado.solicitar_miniatura = self.gerador.solicitar
+        self.leitor = LeitorDatas(self)
+        self.leitor.lote.connect(self._ao_receber_datas)
+        self.leitor.falhou.connect(self._ao_falhar_leitura)
+        self.painel_datas.opcoes_fuso = self.galeria.modelo.opcoes_fuso
+        self.painel_datas.escolha_alterada.connect(self._ao_escolher)
 
         self.divisor = QSplitter(Qt.Orientation.Horizontal)
         self.divisor.setHandleWidth(1)
@@ -299,6 +280,9 @@ class MainWindow(QMainWindow):
         self.galeria.grade.selectionModel().selectionChanged.connect(self._atualizar_status)
         self.galeria.grade.tamanho_alterado.connect(self._sincronizar_zoom)
         self.galeria.grade.activated.connect(self.visualizar)  # duplo clique ou Enter
+        selecao = self.galeria.grade.selectionModel()
+        selecao.currentChanged.connect(self._atualizar_painel)
+        selecao.selectionChanged.connect(self._atualizar_painel)
 
     def visualizar(self, indice: QModelIndex | None = None) -> Visualizador | None:
         grade = self.galeria.grade
@@ -467,6 +451,8 @@ class MainWindow(QMainWindow):
             return
         self._carregando = True
         self.gerador.nova_geracao()
+        self.leitor.nova_geracao()
+        self.painel_datas.limpar()
         self.galeria.modelo.limpar()
         self.galeria.mostrar_vazio("Carregando…", str(self.pasta_atual), botao=False)
         self.statusBar().showMessage(f"Carregando {self.pasta_atual}…")
@@ -476,6 +462,7 @@ class MainWindow(QMainWindow):
         if geracao != self.carregador.geracao:
             return
         self.galeria.modelo.adicionar(midias)
+        self.leitor.ler([m.caminho for m in midias])
         self.galeria.mostrar_lista()
         total = self.galeria.modelo.rowCount()
         self.statusBar().showMessage(f"Carregando… {_plural(total, 'arquivo', 'arquivos')}")
@@ -504,10 +491,67 @@ class MainWindow(QMainWindow):
         if duracao:
             self.galeria.modelo.definir_duracao(caminho, duracao)
 
+    # --- datas ---------------------------------------------------------------------------------
+
+    def _arquivo_em_foco(self) -> Path | None:
+        indice = self.galeria.grade.currentIndex()
+        return indice.data(PapelMidia).caminho if indice.isValid() else None
+
+    def _atualizar_painel(self, *_args) -> None:
+        arquivo = self._arquivo_em_foco()
+        if arquivo is None:
+            self.painel_datas.limpar()
+            return
+        estado = self.galeria.modelo.estado(arquivo)
+        if not estado.lido:
+            self.leitor.ler_agora(arquivo)
+        selecionados = len(self.galeria.grade.selectionModel().selectedIndexes())
+        self.painel_datas.mostrar(arquivo, estado, max(1, selecionados))
+        self._atualizar_botao_aplicar()
+
+    def _ao_receber_datas(self, geracao: int, lista: list) -> None:
+        if geracao != self.leitor.geracao:
+            return
+        modelo = self.galeria.modelo
+        for datas in lista:
+            modelo.definir_datas(datas)
+        foco = self._arquivo_em_foco()
+        if foco is not None and any(d.arquivo == foco for d in lista):
+            self._atualizar_painel()
+        self._atualizar_botao_aplicar()
+
+    def _ao_falhar_leitura(self, geracao: int, mensagem: str) -> None:
+        if geracao == self.leitor.geracao:
+            self.statusBar().showMessage(f"Erro ao ler datas: {mensagem}", 10_000)
+
+    def _ao_escolher(self, arquivo: Path, escolha) -> None:
+        modelo = self.galeria.modelo
+        modelo.definir_escolha(arquivo, escolha)
+        self.painel_datas.ao_estado_alterado(modelo.estado(arquivo))
+        self._atualizar_botao_aplicar()
+
+    def _atualizar_botao_aplicar(self) -> None:
+        prontos = self.arquivos_prontos()
+        self.painel_datas.botao_aplicar.setEnabled(bool(prontos))
+        self.acao_aplicar.setEnabled(bool(prontos))
+        rotulo = f"Aplicar datas ({len(prontos)})" if prontos else "Aplicar datas"
+        self.painel_datas.botao_aplicar.setText(rotulo)
+
+    def arquivos_prontos(self) -> list[Path]:
+        """Arquivos selecionados (ou todos, se nenhum) com data pronta para gravar."""
+        grade, modelo = self.galeria.grade, self.galeria.modelo
+        indices = grade.selectionModel().selectedIndexes()
+        if indices:
+            caminhos = [i.data(PapelMidia).caminho for i in indices]
+        else:
+            caminhos = [m.caminho for m in modelo.midias()]
+        return [c for c in caminhos if modelo.estado(c).status.pronto_para_aplicar]
+
     def closeEvent(self, evento) -> None:
         self.carregador.cancelar()
         self.carregador.aguardar(2000)
         self.gerador.fechar()
+        self.leitor.fechar()
         super().closeEvent(evento)
 
     def _sobre(self) -> None:
