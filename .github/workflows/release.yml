@@ -56,9 +56,9 @@ jobs:
         with:
           name: pacote-${{ matrix.os }}
           path: |
-            dist/*.zip
-            dist/*.tar.gz
-            dist/*.AppImage
+            dist/ags-media-chrono-*.zip
+            dist/ags-media-chrono-*.tar.gz
+            dist/ags-media-chrono-*.AppImage
           if-no-files-found: error
 
   publicar:

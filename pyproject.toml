@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ags-media-chrono"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Organize datas de fotos e vídeos e renomeie em lote — Windows e Linux"
 readme = "README.md"
 license = "MIT"
@@ -25,6 +25,9 @@ dev = [
 
 [project.gui-scripts]
 ags-media-chrono = "ags_media_chrono.app:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "ags_media_chrono.__version__" }  # única fonte da versão
 
 [tool.setuptools.packages.find]
 where = ["src"]

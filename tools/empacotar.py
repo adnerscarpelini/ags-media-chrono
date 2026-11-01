@@ -106,7 +106,9 @@ def appimage(pasta: Path) -> Path:
         f"Exec={NOME}\nIcon={NOME}\nCategories=Graphics;Photography;\n"
         "Comment=Datas de fotos e vídeos e renomeação em lote\n"
     )
-    ferramenta = DIST / "appimagetool.AppImage"
+    # Fora de dist/: só os pacotes finais ficam lá (e são publicados na Release).
+    ferramenta = RAIZ / "build" / "appimagetool.AppImage"
+    ferramenta.parent.mkdir(exist_ok=True)
     if not ferramenta.exists():
         urllib.request.urlretrieve(APPIMAGETOOL, ferramenta)
         ferramenta.chmod(ferramenta.stat().st_mode | stat.S_IEXEC)
