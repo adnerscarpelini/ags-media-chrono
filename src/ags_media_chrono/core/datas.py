@@ -19,6 +19,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from ags_media_chrono.core.exiftool import ExifTool
+from ags_media_chrono.core.nome_arquivo import data_do_nome
 
 
 class Origem(StrEnum):
@@ -29,7 +30,7 @@ class Origem(StrEnum):
     FABRICANTE = "Fabricante"
     GPS = "GPS"
     ARQUIVO = "Sistema de arquivos"
-    NOME = "Nome do arquivo"  # preenchida pela issue #12
+    NOME = "Nome do arquivo"
     OUTRO = "Outro"
 
 
@@ -275,14 +276,32 @@ def ler_datas(
         if not leitura.ok:
             resultados.append(DatasArquivo(leitura.arquivo, erro=leitura.erro))
             continue
+        candidatas = candidatas_de_tags(leitura.tags)
+        if (do_nome := candidata_do_nome(leitura.arquivo.name)) is not None:
+            candidatas.append(do_nome)
         resultados.append(
             DatasArquivo(
                 leitura.arquivo,
-                candidatas=candidatas_de_tags(leitura.tags),
+                candidatas=candidatas,
                 fuso_camera=_fuso_camera(leitura.tags),
             )
         )
     return resultados
+
+
+def candidata_do_nome(nome: str) -> DataCandidata | None:
+    encontrada = data_do_nome(nome)
+    if encontrada is None:
+        return None
+    return DataCandidata(
+        origem=Origem.NOME,
+        campo="Nome:Arquivo",
+        rotulo=encontrada.rotulo,
+        valor=encontrada.valor,
+        texto=nome,
+        captura=False,  # não é metadado de captura: fica fora da pré-seleção (#14)
+        somente_data=encontrada.somente_data,
+    )
 
 
 def _main(argv: list[str]) -> int:
