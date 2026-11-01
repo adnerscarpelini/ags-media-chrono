@@ -1,7 +1,7 @@
-"""Localiza as ferramentas externas (ExifTool, FFmpeg, FFprobe).
+"""Localiza as ferramentas externas (ExifTool e FFmpeg).
 
 Ordem de busca:
-1. Variável de ambiente (AGS_EXIFTOOL, AGS_FFMPEG, AGS_FFPROBE)
+1. Variável de ambiente (AGS_EXIFTOOL, AGS_FFMPEG)
 2. tools/bin/ junto ao executável empacotado (PyInstaller)
 3. tools/bin/ na raiz do projeto (baixado por tools/baixar_ferramentas.py)
 4. PATH do sistema (ex.: exiftool/ffmpeg instalados via apt no Linux)
@@ -20,7 +20,6 @@ EXE = ".exe" if sys.platform == "win32" else ""
 FERRAMENTAS: dict[str, Path] = {
     "exiftool": Path("exiftool") / f"exiftool{EXE}",
     "ffmpeg": Path("ffmpeg") / f"ffmpeg{EXE}",
-    "ffprobe": Path("ffmpeg") / f"ffprobe{EXE}",
 }
 
 

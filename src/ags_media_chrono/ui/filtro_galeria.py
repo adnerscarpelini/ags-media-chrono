@@ -6,19 +6,22 @@ from enum import Enum
 
 from PySide6.QtCore import QModelIndex, QPersistentModelIndex, QSortFilterProxyModel, Qt
 
+from ags_media_chrono.core.escolhas import Status
 from ags_media_chrono.core.midias import Midia, TipoMidia
 from ags_media_chrono.ui.modelo_midias import (
-    PapelMidia,
     PapelOrdemData,
+    PapelOrdemEscolhida,
     PapelOrdemNome,
     PapelOrdemTamanho,
     PapelOrdemTipo,
+    PapelStatus,
 )
 
 
 class Ordenacao(Enum):
     # (rótulo, papel do modelo usado na comparação)
     NOME = ("Nome", PapelOrdemNome)
+    DATA_ESCOLHIDA = ("Data escolhida", PapelOrdemEscolhida)
     DATA_MODIFICACAO = ("Data de modificação", PapelOrdemData)
     TIPO = ("Tipo", PapelOrdemTipo)
     TAMANHO = ("Tamanho", PapelOrdemTamanho)
@@ -41,11 +44,14 @@ class ProxyGaleria(QSortFilterProxyModel):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.tipo: TipoMidia | None = None
+        self.status: Status | None = None
         self.texto = ""
         self.ordenacao = Ordenacao.NOME
         self.crescente = True
         self.setDynamicSortFilter(True)
-        self.setFilterRole(PapelMidia)
+        # O filtro em si é feito em filterAcceptsRow; o filterRole diz ao Qt quais mudanças
+        # de dados exigem refiltrar a linha (mudança de status com filtro de status ativo).
+        self.setFilterRole(PapelStatus)
         self.setSortRole(Ordenacao.NOME.papel)
         self.sort(0, Qt.SortOrder.AscendingOrder)
 
@@ -53,6 +59,12 @@ class ProxyGaleria(QSortFilterProxyModel):
         if tipo != self.tipo:
             self.beginFilterChange()
             self.tipo = tipo
+            self.endFilterChange(QSortFilterProxyModel.Direction.Rows)
+
+    def definir_status(self, status: Status | None) -> None:
+        if status != self.status:
+            self.beginFilterChange()
+            self.status = status
             self.endFilterChange(QSortFilterProxyModel.Direction.Rows)
 
     def definir_texto(self, texto: str) -> None:
@@ -71,10 +83,14 @@ class ProxyGaleria(QSortFilterProxyModel):
 
     @property
     def filtrando(self) -> bool:
-        return self.tipo is not None or bool(self.texto)
+        return self.tipo is not None or self.status is not None or bool(self.texto)
 
     def filterAcceptsRow(self, linha: int, pai: QModelIndex | QPersistentModelIndex) -> bool:
-        return self._aceita(self.sourceModel().midia(linha))
+        modelo = self.sourceModel()
+        midia = modelo.midia(linha)
+        if self.status is not None and modelo.estado(midia.caminho).status != self.status:
+            return False
+        return self._aceita(midia)
 
     def _aceita(self, midia: Midia) -> bool:
         if self.tipo is not None and midia.tipo != self.tipo:

@@ -25,6 +25,15 @@ CORES = {
     "erro": "#e05a5a",
 }
 
+# Cor de cada status de data (chave = valor de core.escolhas.Status).
+CORES_STATUS = {
+    "pendente": CORES["texto_fraco"],
+    "sugerida": CORES["alerta"],
+    "escolhida": CORES["destaque"],
+    "aplicado": CORES["sucesso"],
+    "erro": CORES["erro"],
+}
+
 QSS = """
 * {{
     font-size: 13px;
@@ -185,6 +194,45 @@ QLineEdit:focus, QSpinBox:focus, QComboBox:focus, QDateTimeEdit:focus {{
 QCheckBox::indicator, QRadioButton::indicator {{
     width: 14px;
     height: 14px;
+}}
+QCheckBox::indicator, QListView::indicator, QTreeView::indicator {{
+    border: 1px solid {texto_desativado};
+    border-radius: 3px;
+    background: {fundo};
+}}
+QCheckBox::indicator:hover, QListView::indicator:hover {{
+    border-color: {destaque};
+}}
+QCheckBox::indicator:checked, QListView::indicator:checked, QTreeView::indicator:checked {{
+    background: {destaque};
+    border-color: {destaque};
+}}
+QRadioButton::indicator {{
+    border: 1px solid {texto_desativado};
+    border-radius: 8px;
+    background: {fundo};
+}}
+QRadioButton::indicator:hover {{
+    border-color: {destaque};
+}}
+QRadioButton::indicator:checked {{
+    border: 4px solid {destaque};
+    background: white;
+    width: 8px;
+    height: 8px;
+}}
+QWidget#listaDatas {{
+    background: {painel};
+}}
+QFrame#linhaData {{
+    border-radius: 4px;
+}}
+QFrame#linhaData:hover {{
+    background: {painel_alto};
+}}
+QLabel#detalheData {{
+    color: {texto_fraco};
+    font-size: 11px;
 }}
 
 /* Listas e árvores */

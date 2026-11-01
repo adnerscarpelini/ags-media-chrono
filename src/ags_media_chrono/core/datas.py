@@ -14,7 +14,7 @@ import re
 import sys
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from enum import StrEnum
 from pathlib import Path
 
@@ -63,6 +63,59 @@ class DatasArquivo:
         """Data de captura mais confiável, base da pré-seleção (issue #14)."""
         capturas = [c for c in self.candidatas if c.captura]
         return min(capturas, key=lambda c: c.prioridade) if capturas else None
+
+    # --- fusos (issue #13) ---------------------------------------------------------------
+
+    def fuso_referencia(self) -> timedelta | None:
+        """Fuso em que as datas deste arquivo são exibidas (o "relógio" de onde foi capturado).
+
+        Ordem: fuso da câmera; fuso de uma data de captura que traga fuso (ex.: Keys:CreationDate
+        do iPhone), exceto UTC puro. None = usar o fuso do sistema.
+        """
+        if self.fuso_camera is not None:
+            return self.fuso_camera
+        capturas = sorted((c for c in self.candidatas if c.captura), key=lambda c: c.prioridade)
+        for c in capturas:
+            if c.fuso is not None and c.fuso != timedelta(0):
+                return c.fuso
+        return None
+
+    def instante(self, c: DataCandidata, opcoes: OpcoesFuso | None = None) -> datetime:
+        """Momento absoluto (datetime com fuso) que a candidata representa."""
+        opcoes = opcoes or OpcoesFuso()
+        if c.valor.tzinfo is not None:
+            return c.valor
+        if c.utc_presumido and opcoes.quicktime_utc:
+            return c.valor.replace(tzinfo=UTC)
+        fuso = self.fuso_referencia()
+        if fuso is None:
+            fuso = opcoes.fuso_padrao
+        if fuso is not None:
+            return c.valor.replace(tzinfo=timezone(fuso))
+        return c.valor.astimezone()  # sem fuso conhecido: horário local do sistema
+
+    def hora_local(self, c: DataCandidata, opcoes: OpcoesFuso | None = None) -> datetime:
+        """A candidata convertida para o fuso de referência do arquivo, para exibição/comparação."""
+        opcoes = opcoes or OpcoesFuso()
+        momento = self.instante(c, opcoes)
+        fuso = self.fuso_referencia()
+        if fuso is None:
+            fuso = opcoes.fuso_padrao
+        return momento.astimezone(timezone(fuso)) if fuso is not None else momento.astimezone()
+
+
+@dataclass(frozen=True)
+class OpcoesFuso:
+    # A especificação QuickTime manda gravar CreateDate em UTC (iPhone, a maioria das câmeras).
+    # Alguns aparelhos gravam o horário local; para esses, desligue esta opção.
+    quicktime_utc: bool = True
+    # Fuso usado quando o arquivo não indica nenhum. None = fuso do sistema na data.
+    fuso_padrao: timedelta | None = None
+
+
+def formatar_data(valor: datetime, somente_data: bool = False) -> str:
+    """28/10/2026 10:00:08 (ou só 28/10/2026)."""
+    return valor.strftime("%d/%m/%Y" if somente_data else "%d/%m/%Y %H:%M:%S")
 
 
 # --- regras ---------------------------------------------------------------------------------
@@ -313,17 +366,19 @@ def _main(argv: list[str]) -> int:
             if r.erro:
                 print(f"   ERRO: {r.erro}")
                 continue
-            if r.fuso_camera is not None:
-                print(f"   fuso da câmera: {formatar_fuso(r.fuso_camera)}")
+            referencia = r.fuso_referencia()
+            if referencia is not None:
+                print(f"   fuso de referência: {formatar_fuso(referencia)}")
             sugerida = r.captura_sugerida()
-            for c in sorted(r.candidatas, key=lambda c: (c.origem.value, c.campo)):
+            for c in sorted(r.candidatas, key=lambda c: r.instante(c)):
                 marca = "*" if c is sugerida else " "
-                extras = [
-                    x for x, ativo in (("UTC?", c.utc_presumido), ("captura", c.captura)) if ativo
-                ]
-                print(
-                    f" {marca} {c.origem.value:<20} {c.campo:<32} {c.texto:<28} {' '.join(extras)}"
+                local = formatar_data(r.hora_local(c), c.somente_data)
+                extras = " ".join(
+                    x
+                    for x, ativo in (("(era UTC)", c.utc_presumido), ("captura", c.captura))
+                    if ativo
                 )
+                print(f" {marca} {local:<20} {c.origem.value:<20} {c.campo:<30} {extras}")
     return 0
 
 

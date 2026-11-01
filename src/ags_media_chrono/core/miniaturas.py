@@ -4,7 +4,7 @@
 - HEIC/HEIF: pillow-heif (a orientação já vem aplicada pelo libheif).
 - RAW (NEF etc.): JPEG de prévia embutido, extraído pelo ExifTool.
 - Vídeos: um quadro extraído pelo FFmpeg (que já aplica a rotação do vídeo) e a duração
-  lida pelo FFprobe.
+  lida do cabeçalho que o próprio FFmpeg imprime.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -173,23 +174,25 @@ def _raw(
     return imagem
 
 
-def duracao_video(caminho: Path, ffprobe: Path | None = None) -> float | None:
+_DURACAO = re.compile(rb"Duration:\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?)")
+
+
+def duracao_video(caminho: Path, ffmpeg: Path | None = None) -> float | None:
+    """Duração em segundos, lida do cabeçalho que o FFmpeg imprime ao abrir o arquivo.
+
+    (Dispensa o ffprobe, que tem o mesmo tamanho do ffmpeg — ~130 MB a menos no pacote.)
+    """
     resultado = subprocess.run(
-        [
-            str(ffprobe or localizar("ffprobe")),
-            "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(caminho),
-        ],
+        [str(ffmpeg or localizar("ffmpeg")), "-hide_banner", "-i", str(caminho)],
         capture_output=True,
         timeout=30,
         creationflags=_SEM_JANELA,
-    )  # fmt: skip
-    try:
-        return float(resultado.stdout.decode().strip())
-    except ValueError:
+    )  # sem arquivo de saída o ffmpeg termina com erro, mas o cabeçalho já foi impresso
+    m = _DURACAO.search(resultado.stderr)
+    if not m:
         return None
+    horas, minutos, segundos = m.groups()
+    return int(horas) * 3600 + int(minutos) * 60 + float(segundos)
 
 
 def _quadro_video(caminho: Path, segundo: float, ffmpeg: Path) -> bytes:

@@ -9,6 +9,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QThreadPool, Signal
 
 from ags_media_chrono.core.midias import Midia, listar_midias
+from ags_media_chrono.ui.threads import emitir
 
 INTERVALO_LOTE = 0.1  # segundos entre lotes enviados à interface
 
@@ -55,12 +56,12 @@ class CarregadorPasta(QObject):
             agora = time.monotonic()
             if agora - ultimo_envio >= INTERVALO_LOTE:
                 total += len(buffer)
-                self.lote.emit(geracao, buffer)
+                emitir(self.lote, geracao, buffer)
                 buffer = []
                 ultimo_envio = agora
         if cancelar.is_set():
             return
         if buffer:
             total += len(buffer)
-            self.lote.emit(geracao, buffer)
-        self.concluido.emit(geracao, total)
+            emitir(self.lote, geracao, buffer)
+        emitir(self.concluido, geracao, total)

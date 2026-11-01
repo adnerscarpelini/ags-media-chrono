@@ -40,6 +40,7 @@ from ags_media_chrono.core.midias import Midia, TipoMidia
 from ags_media_chrono.core.miniaturas import imagem_ampliada
 from ags_media_chrono.ui.galeria import formatar_duracao
 from ags_media_chrono.ui.modelo_midias import PapelMidia, PapelMiniatura
+from ags_media_chrono.ui.threads import emitir
 
 FUNDO = "#0e0e0e"
 
@@ -243,9 +244,9 @@ class Visualizador(QDialog):
                 imagem = QImage(
                     pil.tobytes(), pil.width, pil.height, 3 * pil.width, QImage.Format.Format_RGB888
                 ).copy()  # copia: os bytes do Pillow deixam de existir ao sair daqui
-                self._sinais.carregada.emit(geracao, imagem)
+                emitir(self._sinais.carregada, geracao, imagem)
             except Exception as e:  # noqa: BLE001 — qualquer falha vira mensagem na tela
-                self._sinais.falhou.emit(geracao, str(e))
+                emitir(self._sinais.falhou, geracao, str(e))
 
         self._pool.start(trabalho)
 

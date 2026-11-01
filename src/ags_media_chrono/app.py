@@ -3,6 +3,7 @@
 import sys
 from pathlib import Path
 
+from PySide6.QtCore import QLibraryInfo, QLocale, QTranslator
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
 
@@ -22,6 +23,19 @@ def _identificar_app_no_windows() -> None:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("AGS.MediaChrono")
 
 
+def _traduzir_qt(app: QApplication) -> None:
+    """Botões e diálogos padrão do Qt (OK, Cancelar, Fechar, Sim/Não...) em português."""
+    if getattr(app, "_tradutor", None) is not None:
+        return
+    tradutor = QTranslator(app)
+    pasta = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
+    if tradutor.load(
+        QLocale(QLocale.Language.Portuguese, QLocale.Country.Brazil), "qtbase", "_", pasta
+    ):
+        app.installTranslator(tradutor)
+        app._tradutor = tradutor  # mantém a referência viva
+
+
 def create_app(argv: list[str] | None = None) -> QApplication:
     _identificar_app_no_windows()
     app = QApplication.instance() or QApplication(argv if argv is not None else sys.argv)
@@ -29,6 +43,7 @@ def create_app(argv: list[str] | None = None) -> QApplication:
     app.setApplicationVersion(__version__)
     app.setOrganizationName("AGS")
     app.setWindowIcon(QIcon(str(RECURSOS / "icone.png")))
+    _traduzir_qt(app)
     aplicar_tema(app)
     return app
 
@@ -48,9 +63,39 @@ def avisar_ferramentas_ausentes(parent: QWidget) -> None:
     )
 
 
+def verificar_instalacao(saida: Path) -> int:
+    """Diagnóstico do pacote instalado (`--verificar ARQUIVO`): cria a janela, procura as
+    ferramentas e grava um relatório. Retorna 0 se tudo estiver OK. Usado no CI e no suporte
+    (o executável do Windows não tem console, por isso o relatório vai para um arquivo)."""
+    from ags_media_chrono.core.ferramentas import FerramentaNaoEncontrada, localizar
+    from ags_media_chrono.ui.sobre import versao_ferramenta
+
+    create_app([sys.argv[0]])
+    MainWindow().close()
+    linhas = [f"{APP_NAME} {__version__}", f"Python {sys.version.split()[0]}"]
+    ok = True
+    for nome in ("exiftool", "ffmpeg"):
+        try:
+            caminho = localizar(nome)
+        except FerramentaNaoEncontrada:
+            linhas.append(f"{nome}: não encontrado")
+            ok = False
+            continue
+        versao = versao_ferramenta(nome)
+        ok &= not versao.startswith("erro")
+        linhas.append(f"{nome}: {versao} ({caminho})")
+    linhas.append("OK" if ok else "FALHOU")
+    saida.write_text("\n".join(linhas) + "\n", encoding="utf-8")
+    return 0 if ok else 1
+
+
 def main() -> int:
+    if len(sys.argv) >= 3 and sys.argv[1] == "--verificar":
+        return verificar_instalacao(Path(sys.argv[2]))
     app = create_app()
     window = MainWindow()
     window.show()
     avisar_ferramentas_ausentes(window)
+    if (pasta := window.ultima_pasta()) is not None:
+        window.abrir_pasta(pasta)
     return app.exec()

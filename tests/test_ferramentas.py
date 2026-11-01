@@ -55,12 +55,12 @@ def test_usa_path_do_sistema(tmp_path, monkeypatch):
 
 def test_ausente_gera_erro_com_instrucao(tmp_path):
     with pytest.raises(FerramentaNaoEncontrada, match="baixar_ferramentas.py"):
-        localizar("ffprobe", pastas_bin=[tmp_path], usar_path=False)
+        localizar("ffmpeg", pastas_bin=[tmp_path], usar_path=False)
 
 
 def test_ferramentas_ausentes(tmp_path):
     _criar(tmp_path, "exiftool")
-    assert ferramentas_ausentes(pastas_bin=[tmp_path], usar_path=False) == ["ffmpeg", "ffprobe"]
+    assert ferramentas_ausentes(pastas_bin=[tmp_path], usar_path=False) == ["ffmpeg"]
 
 
 def test_parse_checksums_exiftool():

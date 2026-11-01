@@ -259,8 +259,22 @@ class ExifTool:
 
         Sem backup usa -overwrite_original; com backup o ExifTool mantém `<arquivo>_original`.
         """
+        atribuicoes = [(tag, valor) for tag, valor in valores.items()]
+        return self.gravar_atribuicoes(arquivo, atribuicoes, backup=backup, args_extras=args_extras)
+
+    def gravar_atribuicoes(
+        self,
+        arquivo: str | Path,
+        atribuicoes: Sequence[tuple[str, str]],
+        *,
+        backup: bool = False,
+        args_extras: Sequence[str] = (),
+    ) -> ResultadoEscrita:
+        """Como gravar(), mas com uma lista ordenada (a mesma tag pode aparecer mais de uma vez;
+        vale a última). Valor "" apaga a tag. Ex.: [("EXIF:DateTimeOriginal", ""),
+        ("ExifIFD:DateTimeOriginal", "2020:01:01 00:00:00")] apaga e regrava."""
         caminho = Path(arquivo)
-        args = [f"-{tag}={valor}" for tag, valor in valores.items()]
+        args = [f"-{tag}={valor}" for tag, valor in atribuicoes]
         if not backup:
             args.append("-overwrite_original")
         saida = self.executar(*args, *args_extras, str(caminho.absolute()))

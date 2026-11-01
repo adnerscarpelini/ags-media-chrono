@@ -169,7 +169,7 @@ def instalar_ffmpeg(tmp: Path) -> str:
     destino = PASTA_BIN / "ffmpeg"
     shutil.rmtree(destino, ignore_errors=True)
     destino.mkdir(parents=True)
-    for programa in ("ffmpeg", "ffprobe"):
+    for programa in ("ffmpeg",):  # o ffprobe não é necessário (duração vem do ffmpeg)
         shutil.move(str(origem / f"{programa}{EXE}"), destino / f"{programa}{EXE}")
         tornar_executavel(destino / f"{programa}{EXE}")
     shutil.move(str(origem.parent / "LICENSE.txt"), destino / "LICENSE.txt")

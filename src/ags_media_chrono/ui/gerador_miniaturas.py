@@ -19,6 +19,7 @@ from ags_media_chrono.core.exiftool import ExifTool
 from ags_media_chrono.core.ferramentas import FerramentaNaoEncontrada
 from ags_media_chrono.core.midias import Midia
 from ags_media_chrono.core.miniaturas import EXTENSOES_RAW, CacheMiniaturas, gerar_miniatura
+from ags_media_chrono.ui.threads import emitir
 
 PRIORIDADE_FUNDO = 0
 NIVEL_FUNDO, NIVEL_TELA = 0, 1
@@ -132,10 +133,10 @@ class GeradorMiniaturas(QObject):
             if imagem.isNull():
                 raise ValueError("miniatura inválida")
             imagem = imagem.convertToFormat(QImage.Format.Format_RGB888)  # 3 bytes/pixel
-            self.pronta.emit(geracao, midia.caminho, imagem, miniatura.duracao)
+            emitir(self.pronta, geracao, midia.caminho, imagem, miniatura.duracao)
         except Exception as e:  # noqa: BLE001 — qualquer arquivo problemático vira placeholder
             self._contar("falhas")
-            self.falhou.emit(geracao, midia.caminho, str(e))
+            emitir(self.falhou, geracao, midia.caminho, str(e))
 
     def _finalizar(self, geracao: int, caminho: Path, *_args) -> None:
         if geracao == self.geracao:
