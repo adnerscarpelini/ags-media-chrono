@@ -34,6 +34,8 @@ VERSAO_CACHE = 1  # incremente se o formato das miniaturas mudar
 EXTENSOES_RAW = frozenset({".nef", ".nrw", ".dng", ".cr2", ".cr3", ".arw", ".raf", ".orf", ".rw2"})
 # Ordem de preferência: prévias menores primeiro (mais rápidas), miniatura EXIF por último.
 TAGS_PREVIA_RAW = ("PreviewImage", "JpgFromRaw", "OtherImage", "ThumbnailImage")
+# Na visualização ampliada, a prévia em resolução total vem primeiro.
+TAGS_AMPLIADA_RAW = ("JpgFromRaw", "OtherImage", "PreviewImage", "ThumbnailImage")
 
 # Orientação EXIF (1–8) -> transformações do Pillow
 _TRANSPOSICOES = {
@@ -123,29 +125,38 @@ def _gravar_atomico(destino: Path, dados: bytes) -> None:
 # --- geração -------------------------------------------------------------------------------
 
 
-def _para_jpeg(imagem: Image.Image) -> bytes:
-    imagem.thumbnail((TAMANHO_MINIATURA, TAMANHO_MINIATURA), Image.Resampling.LANCZOS)
+def para_rgb(imagem: Image.Image) -> Image.Image:
+    """Converte para RGB; transparência vira fundo cinza escuro (combina com o tema)."""
     if imagem.mode in ("RGBA", "LA", "P"):
         imagem = imagem.convert("RGBA")
         fundo = Image.new("RGB", imagem.size, (42, 42, 42))
         fundo.paste(imagem, mask=imagem.getchannel("A"))
-        imagem = fundo
-    elif imagem.mode != "RGB":
-        imagem = imagem.convert("RGB")
+        return fundo
+    return imagem if imagem.mode == "RGB" else imagem.convert("RGB")
+
+
+def _para_jpeg(imagem: Image.Image) -> bytes:
+    imagem.thumbnail((TAMANHO_MINIATURA, TAMANHO_MINIATURA), Image.Resampling.LANCZOS)
+    imagem = para_rgb(imagem)
     saida = io.BytesIO()
     imagem.save(saida, "JPEG", quality=QUALIDADE_JPEG, optimize=True)
     return saida.getvalue()
 
 
-def _foto(caminho: Path) -> Image.Image:
+def _foto(caminho: Path, lado: int = TAMANHO_MINIATURA * 2) -> Image.Image:
     imagem = Image.open(caminho)
     # Para JPEG grandes, decodifica direto em resolução reduzida (bem mais rápido).
-    imagem.draft("RGB", (TAMANHO_MINIATURA * 2, TAMANHO_MINIATURA * 2))
+    imagem.draft("RGB", (lado, lado))
     return ImageOps.exif_transpose(imagem)
 
 
-def _raw(caminho: Path, exiftool: ExifTool) -> Image.Image:
-    for tag in TAGS_PREVIA_RAW:
+def _raw(
+    caminho: Path,
+    exiftool: ExifTool,
+    lado: int = TAMANHO_MINIATURA * 2,
+    tags: tuple[str, ...] = TAGS_PREVIA_RAW,
+) -> Image.Image:
+    for tag in tags:
         dados = exiftool.extrair_binario(caminho, tag)
         if dados:
             break
@@ -153,7 +164,7 @@ def _raw(caminho: Path, exiftool: ExifTool) -> Image.Image:
         raise ErroMiniatura("Nenhuma prévia JPEG embutida no arquivo RAW")
 
     imagem = Image.open(io.BytesIO(dados))
-    imagem.draft("RGB", (TAMANHO_MINIATURA * 2, TAMANHO_MINIATURA * 2))
+    imagem.draft("RGB", (lado, lado))
     imagem.load()
     # A prévia não carrega a orientação; ela fica no próprio RAW.
     orientacao = exiftool.executar("-n", "-s3", "-Orientation", str(caminho.absolute())).stdout
@@ -226,3 +237,16 @@ def gerar_miniatura(midia: Midia, exiftool: ExifTool | None = None) -> Miniatura
             raise ErroMiniatura("ExifTool necessário para miniaturas de arquivos RAW")
         return Miniatura(_para_jpeg(_raw(caminho, exiftool)))
     return Miniatura(_para_jpeg(_foto(caminho)))
+
+
+def imagem_ampliada(midia: Midia, lado_max: int, exiftool: ExifTool | None = None) -> Image.Image:
+    """Imagem em RGB com o lado maior até `lado_max`, para a visualização ampliada (fotos)."""
+    caminho = midia.caminho
+    if caminho.suffix.lower() in EXTENSOES_RAW:
+        if exiftool is None:
+            raise ErroMiniatura("ExifTool necessário para abrir arquivos RAW")
+        imagem = _raw(caminho, exiftool, lado_max, TAGS_AMPLIADA_RAW)
+    else:
+        imagem = _foto(caminho, lado_max)
+    imagem.thumbnail((lado_max, lado_max), Image.Resampling.LANCZOS)
+    return para_rgb(imagem)

@@ -99,7 +99,8 @@ class GeradorMiniaturas(QObject):
         geracao = self.geracao
         self._pool.start(lambda: self._trabalhar(geracao, midia, repetir), prioridade)
 
-    def _obter_exiftool(self) -> ExifTool | None:
+    def obter_exiftool(self) -> ExifTool | None:
+        """ExifTool compartilhado (criado sob demanda); None se não estiver instalado."""
         with self._lock_exiftool:
             if self._exiftool is None:
                 try:
@@ -123,7 +124,7 @@ class GeradorMiniaturas(QObject):
                 self._contar("cache")
             else:
                 raw = midia.caminho.suffix.lower() in EXTENSOES_RAW
-                exiftool = self._obter_exiftool() if raw else None
+                exiftool = self.obter_exiftool() if raw else None
                 miniatura = gerar_miniatura(midia, exiftool)
                 self.cache.salvar(midia, miniatura)
                 self._contar("geradas")
