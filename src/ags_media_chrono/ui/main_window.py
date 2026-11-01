@@ -8,6 +8,7 @@ from PySide6.QtCore import (
     QPersistentModelIndex,
     QSortFilterProxyModel,
     Qt,
+    QTimer,
     Signal,
 )
 from PySide6.QtGui import QAction, QKeySequence
@@ -299,6 +300,7 @@ class MainWindow(QMainWindow):
         self.trabalho.terminado.connect(self._ao_terminar_trabalho)
         self._progresso = None
         self._tipo_trabalho: str | None = None
+        self._renomear_depois = False
         self.relatorio: DialogoRelatorio | None = None
 
         self.divisor = QSplitter(Qt.Orientation.Horizontal)
@@ -361,6 +363,13 @@ class MainWindow(QMainWindow):
         self.acao_aplicar.setShortcut("Ctrl+Return")
         self.acao_aplicar.setEnabled(False)
         self.acao_aplicar.triggered.connect(lambda: self.aplicar_datas())
+
+        self.acao_aplicar_renomear = QAction("Aplicar datas e renomear…", self)
+        self.acao_aplicar_renomear.setShortcut("Ctrl+Shift+Return")
+        self.acao_aplicar_renomear.setEnabled(False)
+        self.acao_aplicar_renomear.triggered.connect(
+            lambda: self.aplicar_datas(renomear_depois=True)
+        )
 
         self.acao_desfazer = QAction("Desfazer última aplicação", self)
         self.acao_desfazer.setShortcut(QKeySequence.StandardKey.Undo)
@@ -433,6 +442,7 @@ class MainWindow(QMainWindow):
         editar.addSeparator()
         editar.addAction(self.acao_regra)
         editar.addAction(self.acao_aplicar)
+        editar.addAction(self.acao_aplicar_renomear)
         editar.addAction(self.acao_renomear)
 
         exibir = menu.addMenu("E&xibir")
@@ -616,6 +626,7 @@ class MainWindow(QMainWindow):
         prontos = self.arquivos_prontos()
         self.painel_datas.botao_aplicar.setEnabled(bool(prontos))
         self.acao_aplicar.setEnabled(bool(prontos))
+        self.acao_aplicar_renomear.setEnabled(bool(prontos))
         rotulo = f"Aplicar datas ({len(prontos)})" if prontos else "Aplicar datas"
         self.painel_datas.botao_aplicar.setText(rotulo)
 
@@ -659,8 +670,11 @@ class MainWindow(QMainWindow):
 
     # --- gravação, desfazer e histórico ---------------------------------------------------
 
-    def aplicar_datas(self, opcoes: OpcoesGravacao | None = None) -> bool:
-        """Grava as datas dos arquivos prontos. Sem `opcoes`, pergunta ao usuário."""
+    def aplicar_datas(
+        self, opcoes: OpcoesGravacao | None = None, renomear_depois: bool = False
+    ) -> bool:
+        """Grava as datas dos arquivos prontos. Sem `opcoes`, pergunta ao usuário.
+        Com `renomear_depois`, abre o Renomear em lote com os arquivos gravados (issue #29)."""
         if self._tipo_trabalho is not None:
             return False
         modelo = self.galeria.modelo
@@ -668,10 +682,14 @@ class MainWindow(QMainWindow):
         if not prontos:
             return False
         if opcoes is None:
-            dialogo = DialogoAplicar(len(prontos), modelo.opcoes_fuso.quicktime_utc, self)
+            dialogo = DialogoAplicar(
+                len(prontos), modelo.opcoes_fuso.quicktime_utc, renomear_depois, self
+            )
             if not dialogo.exec():
                 return False
             opcoes = dialogo.opcoes()
+            renomear_depois = dialogo.caixa_renomear.isChecked()
+        self._renomear_depois = renomear_depois
         itens = [(modelo.midia_por_caminho(c), modelo.estado(c).escolha.final) for c in prontos]
         self._iniciar_trabalho("gravar", "Gravando datas…", len(itens))
         self.trabalho.gravar(itens, opcoes)
@@ -706,8 +724,10 @@ class MainWindow(QMainWindow):
 
     def renomear_em_lote(self, dialogo: DialogoRenomear | None = None) -> bool:
         """Abre o diálogo para os selecionados (ou todos os exibidos) e renomeia."""
+        return self.renomear_arquivos(self.arquivos_alvo(), dialogo)
+
+    def renomear_arquivos(self, alvos: list[Path], dialogo: DialogoRenomear | None = None) -> bool:
         modelo = self.galeria.modelo
-        alvos = self.arquivos_alvo()
         if not alvos or self._tipo_trabalho is not None:
             return False
         if dialogo is None:
@@ -786,6 +806,10 @@ class MainWindow(QMainWindow):
         self._atualizar_painel()
         self.relatorio = DialogoRelatorio(titulo, entradas, cancelado, self)
         self.relatorio.open()
+        if tipo == "gravar" and self._renomear_depois and lidos and not cancelado:
+            self._renomear_depois = False
+            # Depois do relatório aparecer; as datas escolhidas já são as gravadas.
+            QTimer.singleShot(0, lambda: self.renomear_arquivos(lidos))
 
     def closeEvent(self, evento) -> None:
         self.trabalho.cancelar()

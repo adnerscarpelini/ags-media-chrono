@@ -47,7 +47,13 @@ CHAVE_OPCOES = "gravacao/opcoes"
 class DialogoAplicar(QDialog):
     """Confirmação antes de gravar: quais campos, backup."""
 
-    def __init__(self, quantidade: int, quicktime_utc: bool = True, parent=None) -> None:
+    def __init__(
+        self,
+        quantidade: int,
+        quicktime_utc: bool = True,
+        renomear_depois: bool = False,
+        parent=None,
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Aplicar datas")
         self.setMinimumWidth(500)
@@ -92,6 +98,10 @@ class DialogoAplicar(QDialog):
             "Mesmo sem cópia, é possível desfazer pelo histórico (Editar > Desfazer)."
         )
         layout.addWidget(self.caixa_backup)
+
+        self.caixa_renomear = QCheckBox("Renomear os arquivos em seguida (com as datas novas)")
+        self.caixa_renomear.setChecked(renomear_depois)
+        layout.addWidget(self.caixa_renomear)
 
         nota = QLabel(
             "Todas as alterações ficam registradas e podem ser desfeitas em "

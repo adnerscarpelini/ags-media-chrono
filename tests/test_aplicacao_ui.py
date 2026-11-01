@@ -101,3 +101,23 @@ def test_dialogos_de_opcoes_e_historico(janela):
     historico = DialogoHistorico()
     assert historico.lista.topLevelItemCount() == 1  # "nenhuma alteração"
     assert not historico.botao_desfazer.isEnabled()
+
+
+def test_aplicar_e_renomear_em_seguida(janela, monkeypatch):
+    j, amostras = janela
+    chamadas = []
+    monkeypatch.setattr(j, "renomear_arquivos", lambda alvos, dialogo=None: chamadas.append(alvos))
+    j.galeria.grade.selectionModel().clearSelection()
+    assert j.acao_aplicar_renomear.isEnabled()
+    assert j.aplicar_datas(OpcoesGravacao(), renomear_depois=True)
+    _esperar(j.trabalho.terminado)
+    loop = QEventLoop()
+    QTimer.singleShot(200, loop.quit)  # o renomear abre logo depois do relatório
+    loop.exec()
+    [alvos] = chamadas
+    modelo = j.galeria.modelo
+    aplicados = {m.caminho for m in modelo.midias()
+                 if modelo.estado(m.caminho).status == Status.APLICADO}  # fmt: skip
+    assert set(alvos) == aplicados and amostras["iphone_jpg"] in aplicados
+    dialogo = DialogoAplicar(2, renomear_depois=True)
+    assert dialogo.caixa_renomear.isChecked()
