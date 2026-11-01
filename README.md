@@ -2,7 +2,24 @@
   <img src="assets/logo.png" alt="AGS Media Chrono" width="480">
 </p>
 
-# ags-media-chrono
+<h1 align="center">AGS Media Chrono</h1>
+
+<p align="center">
+  <b>Todas as datas das suas fotos e vídeos em um só lugar — escolha a certa, grave e renomeie em lote.</b>
+</p>
+
+<p align="center">
+  <a href="https://github.com/adnerscarpelini/ags-media-chrono/releases/latest"><img alt="Versão" src="https://img.shields.io/github/v/release/adnerscarpelini/ags-media-chrono?label=vers%C3%A3o"></a>
+  <a href="https://github.com/adnerscarpelini/ags-media-chrono/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/adnerscarpelini/ags-media-chrono/ci.yml?branch=main&label=testes"></a>
+  <img alt="Plataformas" src="https://img.shields.io/badge/plataformas-Windows%20%7C%20Linux-informational">
+  <a href="LICENSE"><img alt="Licença MIT" src="https://img.shields.io/github/license/adnerscarpelini/ags-media-chrono?label=licen%C3%A7a"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/adnerscarpelini/ags-media-chrono/releases/latest"><b>⬇ Baixar a última versão</b></a> ·
+  <a href="#como-usar">Como usar</a> ·
+  <a href="CHANGELOG.md">Novidades</a>
+</p>
 
 Aplicativo desktop (Windows e Linux) para organizar fotos e vídeos: mostra todas as datas
 encontradas em cada arquivo (EXIF, XMP, QuickTime, sistema de arquivos, nome do arquivo),
@@ -91,8 +108,10 @@ A data usada é a escolhida no painel; sem escolha, a de captura; sem ela, a de 
 
 ## Documentação
 
+- [Novidades (CHANGELOG)](CHANGELOG.md)
 - [Requisitos](docs/REQUISITOS.md)
 - [Tarefas / roadmap](docs/TAREFAS.md)
+- [Como publicar uma versão](docs/RELEASE.md)
 
 ## Tecnologias
 
