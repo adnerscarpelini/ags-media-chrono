@@ -68,4 +68,6 @@ def main() -> int:
     window = MainWindow()
     window.show()
     avisar_ferramentas_ausentes(window)
+    if (pasta := window.ultima_pasta()) is not None:
+        window.abrir_pasta(pasta)
     return app.exec()

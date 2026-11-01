@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 )
 
 from ags_media_chrono import APP_NAME, __version__
+from ags_media_chrono.core.datas import OpcoesFuso
 from ags_media_chrono.core.escolhas import Status
 from ags_media_chrono.core.gravacao import OpcoesGravacao
 from ags_media_chrono.core.historico import Operacao, TipoOperacao, listar_operacoes
@@ -48,6 +49,7 @@ from ags_media_chrono.ui.aplicacao import (
     dialogo_progresso,
 )
 from ags_media_chrono.ui.carregador import CarregadorPasta
+from ags_media_chrono.ui.config import configuracoes
 from ags_media_chrono.ui.dialogo_regra import DialogoRegra
 from ags_media_chrono.ui.dialogo_renomear import DialogoRenomear
 from ags_media_chrono.ui.filtro_galeria import Ordenacao, ProxyGaleria
@@ -321,6 +323,7 @@ class MainWindow(QMainWindow):
         self._criar_menus()
         self._criar_barra_ferramentas()
         self._criar_barra_status()
+        self.restaurar_configuracoes()
 
         self.painel_pastas.pasta_selecionada.connect(self.abrir_pasta)
         self.galeria.abrir_pasta.connect(self.escolher_pasta)
@@ -419,6 +422,15 @@ class MainWindow(QMainWindow):
             acao.triggered.connect(lambda _=False, t=tipo: self.galeria.selecionar_tipo(t))
             self.acoes_tipo.append(acao)
 
+        self.acao_quicktime_utc = QAction("Datas QuickTime dos vídeos em UTC", self)
+        self.acao_quicktime_utc.setCheckable(True)
+        self.acao_quicktime_utc.setChecked(True)
+        self.acao_quicktime_utc.setToolTip(
+            "Padrão da especificação e do iPhone. Desmarque se seus aparelhos gravam a hora "
+            "local nesses campos (os vídeos apareceriam com horário errado)."
+        )
+        self.acao_quicktime_utc.toggled.connect(self._ao_mudar_quicktime_utc)
+
         self.acao_sair = QAction("Sair", self)
         self.acao_sair.setShortcut(QKeySequence.StandardKey.Quit)
         self.acao_sair.triggered.connect(self.close)
@@ -453,6 +465,8 @@ class MainWindow(QMainWindow):
         exibir.addAction(self.acao_zoom_mais)
         exibir.addAction(self.acao_zoom_menos)
         exibir.addAction(self.acao_zoom_padrao)
+        exibir.addSeparator()
+        exibir.addAction(self.acao_quicktime_utc)
 
         ajuda = menu.addMenu("Aj&uda")
         ajuda.addAction(self.acao_sobre)
@@ -811,7 +825,51 @@ class MainWindow(QMainWindow):
             # Depois do relatório aparecer; as datas escolhidas já são as gravadas.
             QTimer.singleShot(0, lambda: self.renomear_arquivos(lidos))
 
+    # --- configurações (issue #30) ---------------------------------------------------------
+
+    def restaurar_configuracoes(self) -> None:
+        c = configuracoes()
+        if geometria := c.value("janela/geometria"):
+            self.restoreGeometry(geometria)
+        if divisor := c.value("janela/divisor"):
+            self.divisor.restoreState(divisor)
+        self.galeria.grade.definir_tamanho(int(c.value("galeria/tamanho", TAMANHO_PADRAO)))
+        self._sincronizar_zoom(self.galeria.grade.tamanho)
+        self.acao_subpastas.blockSignals(True)
+        self.acao_subpastas.setChecked(c.value("galeria/subpastas", False, type=bool))
+        self.acao_subpastas.blockSignals(False)
+        ordem = c.value("galeria/ordenacao", Ordenacao.NOME.name)
+        if ordem in Ordenacao.__members__:
+            self.galeria.combo_ordem.setCurrentIndex(list(Ordenacao).index(Ordenacao[ordem]))
+        self.galeria.botao_direcao.setChecked(c.value("galeria/decrescente", False, type=bool))
+        self.acao_quicktime_utc.setChecked(c.value("datas/quicktime_utc", True, type=bool))
+
+    def salvar_configuracoes(self) -> None:
+        c = configuracoes()
+        c.setValue("janela/geometria", self.saveGeometry())
+        c.setValue("janela/divisor", self.divisor.saveState())
+        c.setValue("galeria/tamanho", self.galeria.grade.tamanho)
+        c.setValue("galeria/subpastas", self.acao_subpastas.isChecked())
+        c.setValue("galeria/ordenacao", self.galeria.proxy.ordenacao.name)
+        c.setValue("galeria/decrescente", not self.galeria.proxy.crescente)
+        c.setValue("datas/quicktime_utc", self.acao_quicktime_utc.isChecked())
+        if self.pasta_atual is not None:
+            c.setValue("galeria/ultima_pasta", str(self.pasta_atual))
+        c.sync()
+
+    @staticmethod
+    def ultima_pasta() -> Path | None:
+        valor = configuracoes().value("galeria/ultima_pasta")
+        return Path(valor) if valor and Path(valor).is_dir() else None
+
+    def _ao_mudar_quicktime_utc(self, ativo: bool) -> None:
+        modelo = self.galeria.modelo
+        modelo.opcoes_fuso = OpcoesFuso(quicktime_utc=ativo)
+        self.painel_datas.opcoes_fuso = modelo.opcoes_fuso
+        self._atualizar_painel()
+
     def closeEvent(self, evento) -> None:
+        self.salvar_configuracoes()
         self.trabalho.cancelar()
         self.trabalho.aguardar(10_000)
         self.carregador.cancelar()
