@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from pathlib import Path
 
 from PySide6.QtCore import QAbstractListModel, QModelIndex, QPersistentModelIndex, Qt
@@ -13,6 +14,8 @@ PapelMidia = Qt.ItemDataRole.UserRole + 1
 PapelMiniatura = Qt.ItemDataRole.UserRole + 2  # QImage | None
 PapelDuracao = Qt.ItemDataRole.UserRole + 3  # segundos (float) | None
 
+MAX_MINIATURAS_MEMORIA = 600  # ~320x240x3 bytes cada => ~140 MB no máximo
+
 _Indice = QModelIndex | QPersistentModelIndex
 
 
@@ -21,7 +24,10 @@ class ModeloMidias(QAbstractListModel):
         super().__init__(parent)
         self._midias: list[Midia] = []
         self._linhas: dict[Path, int] = {}
-        self._miniaturas: dict[Path, QImage] = {}
+        # LRU: só as miniaturas usadas mais recentemente ficam na memória; as demais são
+        # pedidas de novo (vêm rápido do cache em disco) quando voltam a aparecer na tela.
+        self._miniaturas: OrderedDict[Path, QImage] = OrderedDict()
+        self.max_miniaturas = MAX_MINIATURAS_MEMORIA
         self._duracoes: dict[Path, float] = {}
 
     def rowCount(self, parent: _Indice = QModelIndex()) -> int:  # noqa: B008
@@ -38,7 +44,10 @@ class ModeloMidias(QAbstractListModel):
         if role == PapelMidia:
             return midia
         if role == PapelMiniatura:
-            return self._miniaturas.get(midia.caminho)
+            imagem = self._miniaturas.get(midia.caminho)
+            if imagem is not None:
+                self._miniaturas.move_to_end(midia.caminho)
+            return imagem
         if role == PapelDuracao:
             return self._duracoes.get(midia.caminho)
         return None
@@ -53,7 +62,7 @@ class ModeloMidias(QAbstractListModel):
         self.beginResetModel()
         self._midias = []
         self._linhas = {}
-        self._miniaturas = {}
+        self._miniaturas = OrderedDict()
         self._duracoes = {}
         self.endResetModel()
 
@@ -68,18 +77,23 @@ class ModeloMidias(QAbstractListModel):
         self.endInsertRows()
 
     def definir_miniatura(self, caminho: Path, imagem: QImage) -> None:
-        self._atualizar(caminho, self._miniaturas, imagem, PapelMiniatura)
+        if not self._atualizar(caminho, self._miniaturas, imagem, PapelMiniatura):
+            return
+        self._miniaturas.move_to_end(caminho)
+        while len(self._miniaturas) > self.max_miniaturas:
+            self._miniaturas.popitem(last=False)
 
     def definir_duracao(self, caminho: Path, segundos: float) -> None:
         self._atualizar(caminho, self._duracoes, segundos, PapelDuracao)
 
-    def _atualizar(self, caminho: Path, destino: dict, valor, papel: int) -> None:
+    def _atualizar(self, caminho: Path, destino: dict, valor, papel: int) -> bool:
         linha = self._linhas.get(caminho)
         if linha is None:  # arquivo de uma pasta que já foi fechada
-            return
+            return False
         destino[caminho] = valor
         indice = self.index(linha)
         self.dataChanged.emit(indice, indice, [papel])
+        return True
 
     def contagem(self) -> dict[TipoMidia, int]:
         total = {TipoMidia.FOTO: 0, TipoMidia.VIDEO: 0}
