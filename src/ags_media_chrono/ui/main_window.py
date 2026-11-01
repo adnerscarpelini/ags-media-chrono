@@ -255,6 +255,7 @@ class MainWindow(QMainWindow):
         self.leitor.falhou.connect(self._ao_falhar_leitura)
         self.painel_datas.opcoes_fuso = self.galeria.modelo.opcoes_fuso
         self.painel_datas.escolha_alterada.connect(self._ao_escolher)
+        self.painel_datas.deslocamento_em_lote.connect(self._deslocar_selecionados)
 
         self.divisor = QSplitter(Qt.Orientation.Horizontal)
         self.divisor.setHandleWidth(1)
@@ -537,6 +538,17 @@ class MainWindow(QMainWindow):
         modelo.definir_escolha(arquivo, escolha)
         self.painel_datas.ao_estado_alterado(modelo.estado(arquivo))
         self._atualizar_botao_aplicar()
+
+    def _deslocar_selecionados(self, deslocamento) -> None:
+        modelo = self.galeria.modelo
+        alterados = 0
+        for caminho in self.arquivos_alvo():
+            escolha = modelo.estado(caminho).escolha
+            if escolha is not None:
+                modelo.definir_escolha(caminho, escolha.com_deslocamento(deslocamento))
+                alterados += 1
+        self.statusBar().showMessage(f"Ajuste aplicado a {alterados} arquivo(s).", 8000)
+        self._atualizar_painel()
 
     def _atualizar_botao_aplicar(self) -> None:
         prontos = self.arquivos_prontos()

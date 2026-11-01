@@ -183,3 +183,49 @@ def test_janela_le_datas_e_mostra_no_painel(qapp, tmp_path):
     assert janela.painel_datas.pilha.currentIndex() == 1
     assert janela.painel_datas.botao_aplicar.text() == "Aplicar datas (1)"
     janela.close()
+
+
+# --- ajuste / deslocamento (#16) -------------------------------------------------------
+
+
+def test_formatar_deslocamento():
+    from ags_media_chrono.ui.painel_datas import formatar_deslocamento
+
+    assert formatar_deslocamento(timedelta(0)) == "0"
+    assert formatar_deslocamento(timedelta(days=1, hours=-2)) == "+22 h"
+    assert formatar_deslocamento(timedelta(minutes=-90)) == "-1 h 30 min"
+    assert formatar_deslocamento(timedelta(days=365, minutes=5)) == "+365 d 5 min"
+
+
+def test_painel_ajuste_altera_data_final(qapp):
+    painel, estado, _ = _painel_com(MOV)
+    painel.spins_ajuste["horas"].setValue(-2)
+    painel.spins_ajuste["minutos"].setValue(-30)
+    assert estado.escolha.deslocamento == timedelta(hours=-2, minutes=-30)
+    assert estado.escolha.final == datetime(2026, 10, 21, 16, 23, 40, tzinfo=BRT)
+    assert "16:23:40" in painel.rotulo_final.text() and "-2 h 30 min" in painel.rotulo_final.text()
+    assert estado.status == Status.ESCOLHIDA
+
+    # trocar a data base mantém o ajuste
+    painel.botao_do_campo("System:FileModifyDate").click()
+    assert estado.escolha.deslocamento == timedelta(hours=-2, minutes=-30)
+
+    # reabrir o arquivo mostra o ajuste salvo
+    painel.mostrar(Path("a.mov"), estado)
+    assert painel.spins_ajuste["horas"].value() == -2
+    assert painel.spins_ajuste["minutos"].value() == -30
+
+
+def test_painel_ajuste_desativado_sem_escolha(qapp):
+    painel, _, _ = _painel_com(WHATSAPP)
+    assert not painel.spins_ajuste["dias"].isEnabled()
+    assert not painel.botao_ajuste_lote.isEnabled()
+
+
+def test_ajuste_em_lote_emite_deslocamento(qapp):
+    painel, _, _ = _painel_com(MOV)
+    recebido = []
+    painel.deslocamento_em_lote.connect(recebido.append)
+    painel.spins_ajuste["dias"].setValue(1)
+    painel.botao_ajuste_lote.click()
+    assert recebido == [timedelta(days=1)]

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from PySide6.QtCore import QDateTime, Qt, QTimeZone, Signal
@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QScrollArea,
+    QSpinBox,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -49,6 +50,20 @@ COR_STATUS = {
 }
 
 
+def formatar_deslocamento(deslocamento: timedelta) -> str:
+    """timedelta(days=1, hours=-2) -> "+22 h"; timedelta(minutes=-90) -> "-1 h 30 min"."""
+    minutos = int(deslocamento.total_seconds()) // 60
+    sinal = "-" if minutos < 0 else "+"
+    dias, resto = divmod(abs(minutos), 1440)
+    horas, mins = divmod(resto, 60)
+    partes = [
+        f"{dias} d" if dias else "",
+        f"{horas} h" if horas else "",
+        f"{mins} min" if mins else "",
+    ]
+    return sinal + " ".join(p for p in partes if p) if minutos else "0"
+
+
 def _titulo(texto: str) -> QLabel:
     rotulo = QLabel(texto.upper())
     rotulo.setObjectName("tituloPainel")
@@ -67,6 +82,7 @@ def _para_qdatetime(valor: datetime) -> QDateTime:
 class PainelDatas(QFrame):
     escolha_alterada = Signal(object, object)  # Path, Escolha | None
     aplicar_solicitado = Signal()
+    deslocamento_em_lote = Signal(object)  # timedelta para todos os selecionados
 
     def __init__(self) -> None:
         super().__init__()
@@ -167,9 +183,60 @@ class PainelDatas(QFrame):
         self.rotulo_final.setWordWrap(True)
         layout.addWidget(self.rotulo_final)
 
-        self.extras = QVBoxLayout()  # espaço para o ajuste de data/hora (issue #16)
-        layout.addLayout(self.extras)
+        layout.addWidget(self._criar_ajuste())
         return conteudo
+
+    def _criar_ajuste(self) -> QFrame:
+        """Ajuste (deslocamento) somado à data escolhida — câmera com relógio errado."""
+        quadro = QFrame()
+        quadro.setObjectName("quadroAjuste")
+        grade = QGridLayout(quadro)
+        grade.setContentsMargins(0, 4, 0, 0)
+        grade.addWidget(QLabel("Ajustar"), 0, 0)
+        self.spins_ajuste: dict[str, QSpinBox] = {}
+        for coluna, (chave, sufixo, limite) in enumerate(
+            (("dias", " d", 36500), ("horas", " h", 23), ("minutos", " min", 59)), start=1
+        ):
+            spin = QSpinBox()
+            spin.setRange(-limite, limite)
+            spin.setSuffix(sufixo)
+            spin.setToolTip("Valores negativos atrasam a data")
+            spin.valueChanged.connect(self._ao_ajustar)
+            self.spins_ajuste[chave] = spin
+            grade.addWidget(spin, 0, coluna)
+        self.botao_ajuste_lote = QPushButton("Aplicar ajuste aos selecionados")
+        self.botao_ajuste_lote.setToolTip(
+            "Usa este mesmo ajuste em todos os arquivos selecionados que têm data escolhida"
+        )
+        self.botao_ajuste_lote.clicked.connect(
+            lambda: self.deslocamento_em_lote.emit(self.deslocamento())
+        )
+        grade.addWidget(self.botao_ajuste_lote, 1, 0, 1, 4)
+        return quadro
+
+    def deslocamento(self) -> timedelta:
+        s = self.spins_ajuste
+        return timedelta(
+            days=s["dias"].value(), hours=s["horas"].value(), minutes=s["minutos"].value()
+        )
+
+    def _mostrar_deslocamento(self, deslocamento: timedelta) -> None:
+        minutos = int(deslocamento.total_seconds()) // 60
+        sinal = -1 if minutos < 0 else 1
+        dias, resto = divmod(abs(minutos), 1440)
+        horas, mins = divmod(resto, 60)
+        for chave, valor in (("dias", dias), ("horas", horas), ("minutos", mins)):
+            spin = self.spins_ajuste[chave]
+            spin.blockSignals(True)
+            spin.setValue(sinal * valor)
+            spin.blockSignals(False)
+
+    def _ao_ajustar(self, *_args) -> None:
+        if self._atualizando or self.estado is None or self.estado.escolha is None:
+            return
+        escolha = self.estado.escolha.com_deslocamento(self.deslocamento())
+        self._mostrar_final(escolha)
+        self.escolha_alterada.emit(self.arquivo, escolha)
 
     def _botao_da_linha(self, linha: int) -> QRadioButton:
         return self._linhas[linha].radio
@@ -257,6 +324,7 @@ class PainelDatas(QFrame):
             )
         )
         self.edicao_especifica.setDateTime(_para_qdatetime(base))
+        self._mostrar_deslocamento(escolha.deslocamento if escolha else timedelta(0))
         self._mostrar_final(escolha)
 
     def _criar_linha(
@@ -287,12 +355,23 @@ class PainelDatas(QFrame):
     def _mostrar_final(self, escolha: Escolha | None) -> None:
         if escolha is None:
             self.rotulo_final.setText("Nenhuma data escolhida.")
+            for spin in self.spins_ajuste.values():
+                spin.setEnabled(False)
+            self.botao_ajuste_lote.setEnabled(False)
             return
         final = escolha.final
         texto = formatar_data(final, escolha.somente_data)
         if final.tzinfo is not None:
             texto += f" ({formatar_fuso(final.utcoffset())})"
-        self.rotulo_final.setText(f"Será gravada: <b>{texto}</b>")
+        ajuste = ""
+        if escolha.deslocamento:
+            ajuste = f"<br><span style='color:{CORES['alerta']}'>com ajuste de " + (
+                f"{formatar_deslocamento(escolha.deslocamento)}</span>"
+            )
+        self.rotulo_final.setText(f"Será gravada: <b>{texto}</b>{ajuste}")
+        for spin in self.spins_ajuste.values():
+            spin.setEnabled(True)
+        self.botao_ajuste_lote.setEnabled(True)
 
     # --- interação ------------------------------------------------------------------------
 
