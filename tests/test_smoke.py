@@ -26,3 +26,11 @@ def test_abrir_pasta_atualiza_interface(qapp, tmp_path):
     window.abrir_pasta(tmp_path)
     assert window.pasta_atual == tmp_path
     assert tmp_path.name in window.windowTitle()
+
+
+def test_icone_do_app(qapp):
+    from ags_media_chrono.app import RECURSOS
+
+    assert (RECURSOS / "icone.png").is_file()
+    assert (RECURSOS / "icone.ico").is_file()
+    assert not qapp.windowIcon().isNull()
