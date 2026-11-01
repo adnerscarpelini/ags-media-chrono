@@ -64,6 +64,8 @@ Lista todas as datas encontradas no arquivo, cada uma com a origem:
 - O usuário marca qual data é a correta (botão de rádio por linha).
 - Opções extras: **data específica** (seletor de data/hora) e **data atual**.
 - Mostrar a data mais antiga encontrada em destaque (geralmente é a correta).
+- Se o arquivo já tiver metadado de **data de captura** (ex.: EXIF DateTimeOriginal,
+  QuickTime CreationDate), essa data vem **pré-selecionada como sugestão**.
 - Indicar fuso horário quando existir; tratar `QuickTime:CreateDate` como UTC (padrão
   da especificação) e converter para hora local na exibição.
 
