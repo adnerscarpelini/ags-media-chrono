@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Build
+build/
+dist/
+*.spec
+
+# Ferramentas de terceiros (baixadas por script)
+tools/bin/
+
+# Cache de miniaturas / dados locais
+.cache/
+
+# Arquivos de backup do ExifTool
+*_original
+
+# IDE / SO
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
