@@ -186,6 +186,18 @@ QCheckBox::indicator, QRadioButton::indicator {{
     width: 14px;
     height: 14px;
 }}
+QCheckBox::indicator, QListView::indicator, QTreeView::indicator {{
+    border: 1px solid {texto_desativado};
+    border-radius: 3px;
+    background: {fundo};
+}}
+QCheckBox::indicator:hover, QListView::indicator:hover {{
+    border-color: {destaque};
+}}
+QCheckBox::indicator:checked, QListView::indicator:checked, QTreeView::indicator:checked {{
+    background: {destaque};
+    border-color: {destaque};
+}}
 QRadioButton::indicator {{
     border: 1px solid {texto_desativado};
     border-radius: 8px;

@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
 from ags_media_chrono import APP_NAME, __version__
 from ags_media_chrono.core.midias import TipoMidia
 from ags_media_chrono.ui.carregador import CarregadorPasta
+from ags_media_chrono.ui.dialogo_regra import DialogoRegra
 from ags_media_chrono.ui.filtro_galeria import Ordenacao, ProxyGaleria
 from ags_media_chrono.ui.galeria import (
     PASSO_ZOOM,
@@ -315,6 +316,11 @@ class MainWindow(QMainWindow):
         self.acao_aplicar.setShortcut("Ctrl+Return")
         self.acao_aplicar.setEnabled(False)
 
+        self.acao_regra = QAction("Escolher data por regra…", self)
+        self.acao_regra.setShortcut("Ctrl+R")
+        self.acao_regra.setToolTip("Escolhe a data de vários arquivos de uma vez, por prioridade")
+        self.acao_regra.triggered.connect(self.escolher_por_regra)
+
         self.acao_renomear = QAction("Renomear em lote…", self)
         self.acao_renomear.setShortcut("F2")
         self.acao_renomear.setEnabled(False)
@@ -368,6 +374,7 @@ class MainWindow(QMainWindow):
         editar.addAction(self.acao_selecionar_tudo)
         editar.addAction(self.acao_limpar_selecao)
         editar.addSeparator()
+        editar.addAction(self.acao_regra)
         editar.addAction(self.acao_aplicar)
         editar.addAction(self.acao_renomear)
 
@@ -390,6 +397,7 @@ class MainWindow(QMainWindow):
         barra.addAction(self.acao_abrir)
         barra.addAction(self.acao_subpastas)
         barra.addSeparator()
+        barra.addAction(self.acao_regra)
         barra.addAction(self.acao_aplicar)
         barra.addAction(self.acao_renomear)
 
@@ -536,6 +544,34 @@ class MainWindow(QMainWindow):
         self.acao_aplicar.setEnabled(bool(prontos))
         rotulo = f"Aplicar datas ({len(prontos)})" if prontos else "Aplicar datas"
         self.painel_datas.botao_aplicar.setText(rotulo)
+
+    def arquivos_alvo(self) -> list[Path]:
+        """Arquivos selecionados; se nenhum estiver selecionado, todos os exibidos."""
+        grade = self.galeria.grade
+        indices = grade.selectionModel().selectedIndexes()
+        if not indices:
+            modelo = grade.model()
+            indices = [modelo.index(i, 0) for i in range(modelo.rowCount())]
+        return [i.data(PapelMidia).caminho for i in indices]
+
+    def escolher_por_regra(self) -> None:
+        modelo = self.galeria.modelo
+        alvos = self.arquivos_alvo()
+        if not alvos:
+            return
+        estados = {c: modelo.estado(c) for c in alvos}
+        dialogo = DialogoRegra(estados, modelo.opcoes_fuso, parent=self)
+        if not dialogo.exec() or dialogo.resultado is None:
+            return
+        for caminho, escolha in dialogo.resultado.escolhas.items():
+            modelo.definir_escolha(caminho, escolha)
+        r = dialogo.resultado
+        self.statusBar().showMessage(
+            f"Regra aplicada: {len(r.escolhas)} com data escolhida, "
+            f"{len(r.sem_data)} sem data encontrada.",
+            10_000,
+        )
+        self._atualizar_painel()
 
     def arquivos_prontos(self) -> list[Path]:
         """Arquivos selecionados (ou todos, se nenhum) com data pronta para gravar."""

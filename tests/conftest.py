@@ -14,6 +14,15 @@ def _cache_isolado(tmp_path_factory, monkeypatch):
     monkeypatch.setenv("XDG_CACHE_HOME", str(pasta))
 
 
+@pytest.fixture(autouse=True)
+def _configuracoes_isoladas(tmp_path_factory):
+    """Configurações (QSettings) em pasta temporária, nunca no perfil real do usuário."""
+    from PySide6.QtCore import QSettings
+
+    pasta = tmp_path_factory.mktemp("config")
+    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(pasta))
+
+
 @pytest.fixture(scope="session")
 def qapp():
     from ags_media_chrono.app import create_app
