@@ -38,6 +38,34 @@ def _sem_caixas_de_mensagem(monkeypatch):
 
 @pytest.fixture(scope="session")
 def qapp():
+    import gc
+
     from ags_media_chrono.app import create_app
 
-    return create_app([])
+    app = create_app([])
+    yield app
+    # Encerramento ordenado: sem isso o Qt pode ser destruído antes de objetos que ainda o
+    # usam, e o processo cai ao sair (segfault no Linux) mesmo com todos os testes passando.
+    _fechar_janelas()
+    gc.collect()
+    app.shutdown()
+
+
+def _fechar_janelas() -> None:
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtWidgets import QApplication
+
+    if QApplication.instance() is None:
+        return
+    for janela in QApplication.topLevelWidgets():
+        janela.close()  # MainWindow.closeEvent para threads e processos do ExifTool
+        janela.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    QCoreApplication.processEvents()
+
+
+@pytest.fixture(autouse=True)
+def _limpar_janelas_apos_teste():
+    """Cada teste deixa a aplicação sem janelas abertas (e sem threads de fundo rodando)."""
+    yield
+    _fechar_janelas()
