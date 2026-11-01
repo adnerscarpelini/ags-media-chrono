@@ -11,6 +11,16 @@ permite escolher a data correta, gravá-la em todos os campos e renomear em lote
 Feito para corrigir mídias baixadas do iCloud, recebidas pelo WhatsApp ou vindas de câmeras
 (ex.: Nikon), onde a data correta fica em lugares diferentes.
 
+## Instalação
+
+Baixe o pacote da sua plataforma na página de
+[Releases](https://github.com/adnerscarpelini/ags-media-chrono/releases) — não é preciso ter
+Python instalado; ExifTool e FFmpeg já vêm dentro:
+
+- **Windows:** extraia o `.zip` e abra `ags-media-chrono.exe`.
+- **Linux:** `chmod +x ags-media-chrono-*.AppImage` e execute; ou extraia o `.tar.gz` e rode
+  `ags-media-chrono/ags-media-chrono`.
+
 ## Como usar
 
 1. **Abra uma pasta** pela árvore à esquerda ou em *Arquivo › Abrir pasta* (`Ctrl+O`).
@@ -103,8 +113,8 @@ pip install -e ".[dev]"
 python tools/baixar_ferramentas.py   # ExifTool e FFmpeg em tools/bin/
 ```
 
-O app procura ExifTool/FFmpeg nesta ordem: variáveis `AGS_EXIFTOOL` / `AGS_FFMPEG` /
-`AGS_FFPROBE`, `tools/bin/` e o PATH do sistema. No Linux, em vez do script, também dá para
+O app procura ExifTool/FFmpeg nesta ordem: variáveis `AGS_EXIFTOOL` / `AGS_FFMPEG`,
+`tools/bin/` e o PATH do sistema. No Linux, em vez do script, também dá para
 usar os pacotes do sistema (`sudo apt install libimage-exiftool-perl ffmpeg`). A versão Linux
 do ExifTool é um script Perl, então o `perl` precisa estar instalado.
 
@@ -118,6 +128,16 @@ ruff check . && ruff format --check .   # lint
 
 Para testar também com um RAW real da Nikon (não versionado), defina `AGS_AMOSTRA_NEF` com o
 caminho de um `.NEF` antes de rodar o `pytest`.
+
+Para gerar o pacote distribuível da plataforma atual (Windows: `.zip`; Linux: `.tar.gz` e
+AppImage) em `dist/`:
+
+```bash
+python tools/empacotar.py
+```
+
+O script baixa ExifTool/FFmpeg se faltarem, roda o PyInstaller e testa o executável gerado
+(`ags-media-chrono --verificar relatorio.txt`).
 
 No Linux, o Qt pode precisar de bibliotecas do sistema (ex.: Ubuntu:
 `sudo apt install libxcb-cursor0 libegl1`).

@@ -28,9 +28,7 @@ def _tem(nome):
 
 
 requer_exiftool = pytest.mark.skipif(not _tem("exiftool"), reason="ExifTool não instalado")
-requer_ffmpeg = pytest.mark.skipif(
-    not (_tem("ffmpeg") and _tem("ffprobe")), reason="FFmpeg não instalado"
-)
+requer_ffmpeg = pytest.mark.skipif(not _tem("ffmpeg"), reason="FFmpeg não instalado")
 
 
 def _midia(caminho: Path) -> Midia:
