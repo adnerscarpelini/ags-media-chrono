@@ -4,6 +4,13 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+  # Valida o empacotamento em PRs que mexem nele (sem publicar nada).
+  pull_request:
+    paths:
+      - "empacotamento/**"
+      - "tools/empacotar.py"
+      - "tools/baixar_ferramentas.py"
+      - ".github/workflows/release.yml"
 
 permissions:
   contents: write
