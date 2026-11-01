@@ -134,6 +134,17 @@ class ExifTool:
 
     def executar(self, *args: str, timeout: float = TIMEOUT_PADRAO) -> Saida:
         """Executa um comando e retorna stdout/stderr completos."""
+        stdout, stderr = self._executar_bruto(args, timeout)
+        return Saida(stdout.decode("utf-8", errors="replace"), stderr)
+
+    def extrair_binario(
+        self, arquivo: str | Path, tag: str, *, timeout: float = TIMEOUT_PADRAO
+    ) -> bytes:
+        """Retorna o conteúdo binário de uma tag (ex.: PreviewImage) ou b"" se não existir."""
+        stdout, _ = self._executar_bruto(("-b", f"-{tag}", str(Path(arquivo).absolute())), timeout)
+        return stdout
+
+    def _executar_bruto(self, args: Sequence[str], timeout: float) -> tuple[bytes, str]:
         for arg in args:
             if "\n" in arg or "\r" in arg:
                 raise ValueError(f"Argumento com quebra de linha não é permitido: {arg!r}")
@@ -141,8 +152,9 @@ class ExifTool:
         with self._lock:
             self.iniciar()
             self._contador += 1
-            marcador = f"{{ready{self._contador}}}"
-            linhas = [*ARGS_COMUNS, *args, "-echo4", marcador, f"-execute{self._contador}"]
+            marcador = f"{{ready{self._contador}}}".encode()
+            linhas = [*ARGS_COMUNS, *args, "-echo4", marcador.decode()]
+            linhas.append(f"-execute{self._contador}")
             try:
                 self._processo.stdin.write(("\n".join(linhas) + "\n").encode("utf-8"))
                 self._processo.stdin.flush()
@@ -151,10 +163,10 @@ class ExifTool:
             except (OSError, ErroExifTool) as e:
                 self._abortar()
                 raise ErroExifTool(f"Falha ao comunicar com o ExifTool: {e}") from e
-        return Saida(stdout, stderr)
+        return stdout, stderr.decode("utf-8", errors="replace")
 
-    def _coletar(self, fila: queue.Queue, marcador: str, timeout: float) -> str:
-        partes: list[str] = []
+    def _coletar(self, fila: queue.Queue, marcador: bytes, timeout: float) -> bytes:
+        partes: list[bytes] = []
         while True:
             try:
                 linha = fila.get(timeout=timeout)
@@ -162,13 +174,13 @@ class ExifTool:
                 raise ErroExifTool(f"tempo esgotado ({timeout:.0f}s)") from None
             if linha is None:
                 raise ErroExifTool("o processo foi encerrado inesperadamente")
-            texto = linha.decode("utf-8", errors="replace")
-            # O marcador pode vir colado ao fim da última linha se ela não terminar com \n.
-            sem_quebra = texto.rstrip("\r\n")
+            # O marcador pode vir colado ao fim da última linha se ela não terminar com \n
+            # (sempre o caso em saídas binárias com -b).
+            sem_quebra = linha.rstrip(b"\r\n")
             if sem_quebra.endswith(marcador):
                 partes.append(sem_quebra[: -len(marcador)])
-                return "".join(partes)
-            partes.append(texto)
+                return b"".join(partes)
+            partes.append(linha)
 
     def _abortar(self) -> None:
         if self._processo:

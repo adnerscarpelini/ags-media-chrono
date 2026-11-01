@@ -30,6 +30,7 @@ from ags_media_chrono import APP_NAME, __version__
 from ags_media_chrono.core.midias import TipoMidia
 from ags_media_chrono.ui.carregador import CarregadorPasta
 from ags_media_chrono.ui.galeria import VisaoGaleria
+from ags_media_chrono.ui.gerador_miniaturas import GeradorMiniaturas
 from ags_media_chrono.ui.modelo_midias import ModeloMidias
 
 
@@ -177,6 +178,9 @@ class MainWindow(QMainWindow):
         self.carregador = CarregadorPasta(self)
         self.carregador.lote.connect(self._ao_receber_lote)
         self.carregador.concluido.connect(self._ao_concluir)
+        self.gerador = GeradorMiniaturas(self)
+        self.gerador.pronta.connect(self._ao_receber_miniatura)
+        self.galeria.grade.delegado.solicitar_miniatura = self.gerador.solicitar
 
         self.divisor = QSplitter(Qt.Orientation.Horizontal)
         self.divisor.setHandleWidth(1)
@@ -269,6 +273,7 @@ class MainWindow(QMainWindow):
     def _recarregar(self) -> None:
         if self.pasta_atual is None:
             return
+        self.gerador.nova_geracao()
         self.galeria.modelo.limpar()
         self.galeria.mostrar_vazio("Carregando…", str(self.pasta_atual), botao=False)
         self.statusBar().showMessage(f"Carregando {self.pasta_atual}…")
@@ -295,15 +300,24 @@ class MainWindow(QMainWindow):
             )
             self.statusBar().showMessage(f"{self.pasta_atual} — vazio")
             return
+        self.gerador.pre_carregar(self.galeria.modelo.midias())
         c = self.galeria.modelo.contagem()
         self.statusBar().showMessage(
             f"{_plural(c[TipoMidia.FOTO], 'foto', 'fotos')} · "
             f"{_plural(c[TipoMidia.VIDEO], 'vídeo', 'vídeos')} — {self.pasta_atual}"
         )
 
+    def _ao_receber_miniatura(self, geracao: int, caminho: Path, imagem, duracao) -> None:
+        if geracao != self.gerador.geracao:
+            return
+        self.galeria.modelo.definir_miniatura(caminho, imagem)
+        if duracao:
+            self.galeria.modelo.definir_duracao(caminho, duracao)
+
     def closeEvent(self, evento) -> None:
         self.carregador.cancelar()
         self.carregador.aguardar(2000)
+        self.gerador.fechar()
         super().closeEvent(evento)
 
     def _sobre(self) -> None:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from PySide6.QtCore import QModelIndex, QPointF, QRect, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPolygonF
 from PySide6.QtWidgets import (
@@ -12,7 +14,7 @@ from PySide6.QtWidgets import (
     QStyleOptionViewItem,
 )
 
-from ags_media_chrono.core.midias import TipoMidia
+from ags_media_chrono.core.midias import Midia, TipoMidia
 from ags_media_chrono.ui.modelo_midias import PapelDuracao, PapelMidia, PapelMiniatura
 from ags_media_chrono.ui.tema import CORES
 
@@ -34,6 +36,8 @@ class DelegadoMiniatura(QStyledItemDelegate):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.tamanho = TAMANHO_PADRAO
+        # Chamado ao desenhar um item ainda sem miniatura (só itens visíveis são desenhados).
+        self.solicitar_miniatura: Callable[[Midia], None] | None = None
         self._cor = {k: QColor(v) for k, v in CORES.items()}
         self._fonte_rotulo = QFont()
         self._fonte_rotulo.setPixelSize(11)
@@ -69,6 +73,8 @@ class DelegadoMiniatura(QStyledItemDelegate):
         else:
             alvo = area.adjusted(8, 8, -8, -8)
             self._desenhar_placeholder(painter, alvo, midia.caminho.suffix.lstrip(".").upper())
+            if self.solicitar_miniatura:
+                self.solicitar_miniatura(midia)
 
         if selecionado:
             caneta = painter.pen()
