@@ -64,6 +64,7 @@ from ags_media_chrono.ui.gerador_miniaturas import GeradorMiniaturas
 from ags_media_chrono.ui.leitor_datas import LeitorDatas
 from ags_media_chrono.ui.modelo_midias import ModeloMidias, PapelMidia
 from ags_media_chrono.ui.painel_datas import PainelDatas
+from ags_media_chrono.ui.sobre import DialogoSobre
 from ags_media_chrono.ui.visualizador import Visualizador
 
 
@@ -879,10 +880,4 @@ class MainWindow(QMainWindow):
         super().closeEvent(evento)
 
     def _sobre(self) -> None:
-        QMessageBox.about(
-            self,
-            f"Sobre o {APP_NAME}",
-            f"<b>{APP_NAME}</b> {__version__}<br><br>"
-            "Organize as datas de fotos e vídeos e renomeie em lote.<br><br>"
-            "Usa ExifTool (Phil Harvey), FFmpeg e Qt.",
-        )
+        DialogoSobre(self).exec()
