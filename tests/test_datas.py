@@ -236,3 +236,64 @@ def test_ler_datas_jpeg_e_video(tmp_path):
         assert r_video.captura_sugerida().campo == "Keys:CreationDate"
         quicktime = next(c for c in r_video.candidatas if c.campo == "QuickTime:CreateDate")
         assert quicktime.utc_presumido
+
+
+# --- fusos (#13) ----------------------------------------------------------------------------
+
+
+def _arquivo(tags):
+    from ags_media_chrono.core.datas import DatasArquivo
+
+    return DatasArquivo(None, candidatas_de_tags(tags), fuso_camera=_fuso_camera(tags))
+
+
+def test_quicktime_utc_aparece_no_mesmo_horario_do_keys():
+    from ags_media_chrono.core.datas import formatar_data
+
+    d = _arquivo(IPHONE_MOV)
+    assert d.fuso_referencia() == timedelta(hours=-3)
+    horas = {c.campo: formatar_data(d.hora_local(c)) for c in d.candidatas}
+    assert horas["QuickTime:CreateDate"] == "21/10/2026 18:53:40"
+    assert horas["Track:MediaCreateDate"] == "21/10/2026 18:53:40"
+    assert horas["Keys:CreationDate"] == "21/10/2026 18:53:40"
+
+
+def test_quicktime_como_horario_local_quando_opcao_desligada():
+    from ags_media_chrono.core.datas import OpcoesFuso, formatar_data
+
+    d = _arquivo({"QuickTime:CreateDate": "2023:05:12 14:30:00"})
+    opcoes = OpcoesFuso(quicktime_utc=False, fuso_padrao=timedelta(hours=-3))
+    [c] = d.candidatas
+    assert formatar_data(d.hora_local(c, opcoes)) == "12/05/2023 14:30:00"
+    opcoes_utc = OpcoesFuso(quicktime_utc=True, fuso_padrao=timedelta(hours=-3))
+    assert formatar_data(d.hora_local(c, opcoes_utc)) == "12/05/2023 11:30:00"
+
+
+def test_gps_utc_convertido_para_fuso_da_camera():
+    from ags_media_chrono.core.datas import formatar_data
+
+    d = _arquivo(IPHONE_HEIC)
+    gps = next(c for c in d.candidatas if c.origem == Origem.GPS)
+    assert formatar_data(d.hora_local(gps)) == "28/10/2026 10:00:05"
+
+
+def test_nikon_sem_fuso_no_exif_usa_fuso_da_camera():
+    d = _arquivo(NIKON_NEF)
+    captura = d.captura_sugerida()
+    assert d.instante(captura) == datetime(2017, 6, 17, 12, 44, 6, tzinfo=UTC)
+    assert d.hora_local(captura).strftime("%H:%M") == "14:44"
+
+
+def test_sem_fuso_conhecido_usa_fuso_padrao():
+    from ags_media_chrono.core.datas import OpcoesFuso
+
+    d = _arquivo({"ExifIFD:DateTimeOriginal": "2023:05:12 14:30:00"})
+    assert d.fuso_referencia() is None
+    opcoes = OpcoesFuso(fuso_padrao=timedelta(hours=1))
+    momento = d.instante(d.candidatas[0], opcoes)
+    assert momento == datetime(2023, 5, 12, 13, 30, tzinfo=UTC)
+
+
+def test_fuso_referencia_ignora_utc_puro():
+    d = _arquivo({"Composite:GPSDateTime": "2023:05:12 17:30:00Z"})
+    assert d.fuso_referencia() is None
