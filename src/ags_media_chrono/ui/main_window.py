@@ -45,6 +45,7 @@ from ags_media_chrono.ui.galeria import (
 )
 from ags_media_chrono.ui.gerador_miniaturas import GeradorMiniaturas
 from ags_media_chrono.ui.modelo_midias import ModeloMidias
+from ags_media_chrono.ui.visualizador import Visualizador
 
 
 def _titulo_painel(texto: str) -> QLabel:
@@ -297,6 +298,24 @@ class MainWindow(QMainWindow):
         self.galeria.filtro_alterado.connect(self._atualizar_status)
         self.galeria.grade.selectionModel().selectionChanged.connect(self._atualizar_status)
         self.galeria.grade.tamanho_alterado.connect(self._sincronizar_zoom)
+        self.galeria.grade.activated.connect(self.visualizar)  # duplo clique ou Enter
+
+    def visualizar(self, indice: QModelIndex | None = None) -> Visualizador | None:
+        grade = self.galeria.grade
+        indice = indice if indice is not None and indice.isValid() else grade.currentIndex()
+        if not indice.isValid():
+            return None
+        visualizador = Visualizador(grade.model(), indice.row(), self.gerador.obter_exiftool, self)
+        # A galeria acompanha o item exibido, para ficar nele ao fechar o visualizador.
+        visualizador.indice_alterado.connect(self._focar_item)
+        visualizador.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        visualizador.showMaximized()
+        return visualizador
+
+    def _focar_item(self, indice: QModelIndex) -> None:
+        grade = self.galeria.grade
+        grade.setCurrentIndex(indice)
+        grade.scrollTo(indice)
 
     def _criar_acoes(self) -> None:
         self.acao_abrir = QAction("Abrir pasta…", self)
